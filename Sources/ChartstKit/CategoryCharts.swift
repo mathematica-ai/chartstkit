@@ -58,6 +58,7 @@ public struct CategoryBarChart: View {
     public var formatValue: ((String, Double) -> String)?
 
     @Environment(\.chartTheme) private var environmentTheme
+    @Environment(\.chartAccessibility) private var chartAccessibility
     @State private var hover: Int?
     @FocusState private var focused: Bool
 
@@ -112,15 +113,11 @@ public struct CategoryBarChart: View {
                     context.stroke(path, with: .color(chartColor(item.color, fallback: chartColor(theme.palette.neutral))), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                 }
             }
-            .gesture(DragGesture(minimumDistance: 0).onEnded { value in
-                guard let index = categoryAt(value.location, frame: frame) else { return }
+            .gesture(SpatialTapGesture().onEnded { value in
+                guard let index = categoryAt(value.location, frame: frame, size: geo.size) else { return }
                 hover = index
                 if categories.indices.contains(index) { onSelect?(categories[index], index) }
             })
-            .onTapGesture { location in
-                // Drag handles the tap. This keeps the plot hittable.
-                _ = location
-            }
         }
         .frame(height: 320)
         .focusable()
@@ -129,7 +126,10 @@ public struct CategoryBarChart: View {
         .onKeyPress(.rightArrow) { step(orientation == .horizontal ? 0 : 1); return .handled }
         .onKeyPress(.upArrow) { step(orientation == .horizontal ? -1 : 0); return .handled }
         .onKeyPress(.downArrow) { step(orientation == .horizontal ? 1 : 0); return .handled }
-        .accessibilityLabel(ariaLabel)
+        .chartAccess(chartAccessibility, title: ariaLabel, summary: ariaLabel, samples: categoricalSamples(series: series.map { (name: $0.name, values: $0.data.map(\.number)) }, categories: categories, formatValue: formatChartNumber), categorical: true)
+        .accessibilityAdjustableAction { direction in
+            step(direction == .increment ? 1 : -1)
+        }
         .overlay(alignment: .topTrailing) { tooltip(theme) }
     }
 
@@ -161,13 +161,8 @@ public struct CategoryBarChart: View {
         return categorical(theme, index)
     }
 
-    private func categoryAt(_ point: CGPoint, frame: CategoryFrame) -> Int? {
-        frame.rects.min(by: { lhs, rhs in
-            hypot(point.x - lhs.x, point.y - lhs.y) < hypot(point.x - rhs.x, point.y - rhs.y)
-        }).flatMap { rect in
-            let box = CGRect(x: rect.x, y: rect.y, width: rect.width, height: rect.height).insetBy(dx: -4, dy: -4)
-            return box.contains(point) ? rect.category : nil
-        }
+    private func categoryAt(_ point: CGPoint, frame: CategoryFrame, size: CGSize) -> Int? {
+        categoryIndex(x: point.x, y: point.y, width: size.width, height: size.height, pad: frame.pad, count: categories.count, orientation: frame.orientation)
     }
 
     private func step(_ delta: Int) {
@@ -248,6 +243,7 @@ public struct ScatterChart: View {
     public var onSelect: ((String, Int) -> Void)?
 
     @Environment(\.chartTheme) private var environmentTheme
+    @Environment(\.chartAccessibility) private var chartAccessibility
     @State private var active: Int?
     @FocusState private var focused: Bool
 
@@ -298,7 +294,7 @@ public struct ScatterChart: View {
                     context.fill(Path(ellipseIn: rect), with: .color(color))
                 }
             }
-            .gesture(DragGesture(minimumDistance: 0).onEnded { value in
+            .gesture(SpatialTapGesture().onEnded { value in
                 guard let index = nearest(value.location, frame: frame) else { return }
                 active = index
                 let point = frame.points[index]
@@ -310,7 +306,21 @@ public struct ScatterChart: View {
         .focused($focused)
         .onKeyPress(.rightArrow) { move(1); return .handled }
         .onKeyPress(.leftArrow) { move(-1); return .handled }
-        .accessibilityLabel(ariaLabel)
+        .chartAccess(
+            chartAccessibility,
+            title: ariaLabel,
+            summary: ariaLabel,
+            samples: series.map { item in
+                ChartSeriesSample(name: item.name, continuous: item.line, points: item.data.enumerated().compactMap { index, point in
+                    guard point.x.isFinite, point.y.isFinite else { return nil }
+                    return ChartPointSample(x: point.x, y: point.y, label: "\(formatChartNumber(point.x)), \(formatChartNumber(point.y))")
+                })
+            },
+            categorical: false
+        )
+        .accessibilityAdjustableAction { direction in
+            move(direction == .increment ? 1 : -1)
+        }
     }
 
     private func nearest(_ point: CGPoint, frame: ScatterFrame) -> Int? {
@@ -370,6 +380,7 @@ public struct PolarChart: View {
     public var themeOverride: ChartTheme?
 
     @Environment(\.chartTheme) private var environmentTheme
+    @Environment(\.chartAccessibility) private var chartAccessibility
     @State private var active: Int = 0
     @FocusState private var focused: Bool
 
@@ -411,9 +422,23 @@ public struct PolarChart: View {
         .frame(height: 360)
         .focusable()
         .focused($focused)
-        .onKeyPress(.rightArrow) { active += 1; return .handled }
-        .onKeyPress(.leftArrow) { active -= 1; return .handled }
-        .accessibilityLabel(ariaLabel)
+        .onKeyPress(.rightArrow) { stepPolar(1); return .handled }
+        .onKeyPress(.leftArrow) { stepPolar(-1); return .handled }
+        .chartAccess(
+            chartAccessibility,
+            title: ariaLabel,
+            summary: ariaLabel,
+            samples: categoricalSamples(
+                series: series.map { (name: $0.name, values: $0.data.map { Optional($0) }) } + points.map { item in (name: item.name, values: item.data.map { Optional($0.radius) }) },
+                categories: categories.isEmpty ? points.flatMap { $0.data.map { formatChartNumber($0.angle) } } : categories,
+                formatValue: formatChartNumber
+            ),
+            categorical: true
+        )
+        .accessibilityAdjustableAction { direction in
+            stepPolar(direction == .increment ? 1 : -1)
+        }
+        .accessibilityValue(polarValue)
     }
 
     private func drawBars(_ context: GraphicsContext, center: CGPoint, radius: CGFloat, theme: ChartTheme) {
@@ -424,9 +449,36 @@ public struct PolarChart: View {
                 let angles = wedgeAngles(index: index, count: count, direction: direction)
                 let outer = CGFloat(barRadius(value: value, max: maxValue, radius: radius))
                 let path = wedge(center: center, inner: 0, outer: outer, start: angles.0, end: angles.1)
-                context.fill(path, with: .color(chartColor(item.color ?? categorical(theme, seriesIndex)).opacity(0.72)))
+                let chosen = index == active
+                context.fill(path, with: .color(chartColor(item.color ?? categorical(theme, seriesIndex)).opacity(chosen ? 1 : 0.72)))
+                if chosen {
+                    context.stroke(path, with: .color(chartColor(theme.palette.text)), lineWidth: 1.5)
+                }
             }
         }
+    }
+
+    private var slotCount: Int {
+        switch mode {
+        case .bar, .line:
+            return max(categories.count, series.map(\.data.count).max() ?? 0, 1)
+        case .scatter:
+            return max(points.flatMap(\.data).count, 1)
+        }
+    }
+
+    private func stepPolar(_ delta: Int) {
+        let count = slotCount
+        active = min(max(active + delta, 0), count - 1)
+    }
+
+    private var polarValue: String {
+        if active < categories.count {
+            let value = series.first?.data.indices.contains(active) == true ? series[0].data[active] : nil
+            let number = value.map { formatChartNumber($0) } ?? ""
+            return number.isEmpty ? categories[active] : "\(categories[active]), \(number)"
+        }
+        return ariaLabel
     }
 
     private func drawLine(_ context: GraphicsContext, center: CGPoint, radius: CGFloat, theme: ChartTheme) {

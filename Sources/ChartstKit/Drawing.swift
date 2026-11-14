@@ -2,7 +2,11 @@ import SwiftUI
 
 func chartColor(_ raw: String?, fallback: Color = .clear) -> Color {
     guard let raw, let parsed = parseColor(raw) else { return fallback }
-    return Color(.sRGB, red: parsed.r / 255, green: parsed.g / 255, blue: parsed.b / 255, opacity: parsed.a)
+    return chartColor(parsed)
+}
+
+func chartColor(_ parsed: RGBA) -> Color {
+    Color(.sRGB, red: parsed.r / 255, green: parsed.g / 255, blue: parsed.b / 255, opacity: parsed.a)
 }
 
 func chartFont(_ text: ChartTheme.TextStyle, mono: Bool) -> Font {

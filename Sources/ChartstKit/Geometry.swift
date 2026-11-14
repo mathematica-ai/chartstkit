@@ -86,7 +86,7 @@ public struct CategoryFrame: Sendable {
     public var pad: CategoryPad
     public var left: CategoryExtent
     public var right: CategoryExtent?
-    public var across: (Double, CategoryScale) -> CategoryLine
+    public var across: @Sendable (Double, CategoryScale) -> CategoryLine
 }
 
 public struct CategoryLayoutOptions {
@@ -145,6 +145,21 @@ public func categoryFrame(_ options: CategoryLayoutOptions) -> CategoryFrame {
 
 public func categoryLayout(_ options: CategoryLayoutOptions) -> [CategoryRect] {
     categoryFrame(options).rects
+}
+
+/// The category whose column or row contains the point. The hit target is the whole slot, not only the bar.
+public func categoryIndex(
+    x: Double, y: Double, width: Double, height: Double, pad: CategoryPad, count: Int, orientation: CategoryOrientation
+) -> Int? {
+    guard count > 0, width.isFinite, height.isFinite else { return nil }
+    if orientation == .horizontal {
+        let plot = height - pad.top - pad.bottom
+        guard plot > 0, y >= pad.top, y <= height - pad.bottom else { return nil }
+        return min(count - 1, Int((y - pad.top) / (plot / Double(count))))
+    }
+    let plot = width - pad.left - pad.right
+    guard plot > 0, x >= pad.left, x <= width - pad.right else { return nil }
+    return min(count - 1, Int((x - pad.left) / (plot / Double(count))))
 }
 
 public func axisTicks(min minValue: Double, max maxValue: Double, count: Int = 4) -> [Double] {
@@ -295,7 +310,7 @@ public struct HeatmapRange: Equatable, Sendable {
     }
 }
 
-public struct HeatmapCell<Row, Column>: Sendable {
+public struct HeatmapCell<Row: Sendable, Column: Sendable>: Sendable {
     public var row: Row
     public var column: Column
     public var r: Int
@@ -304,7 +319,7 @@ public struct HeatmapCell<Row, Column>: Sendable {
     public var step: Int
 }
 
-public struct HeatmapStats<Row, Column>: Sendable {
+public struct HeatmapStats<Row: Sendable, Column: Sendable>: Sendable {
     public var count: Int
     public var missing: Int
     public var mean: Double?
@@ -326,7 +341,7 @@ public struct HeatmapLayout: Equatable, Sendable {
     }
 }
 
-public func heatmapGrid<Row, Column>(
+public func heatmapGrid<Row: Sendable, Column: Sendable>(
     rows: [Row], columns: [Column],
     value: (Row, Column, Int, Int) -> Double?,
     count: Int = 5, thresholds: [Double]? = nil, scale: QuantizeScale = .equal
@@ -364,7 +379,7 @@ public func inRange(_ range: HeatmapRange?, _ r: Int, _ c: Int) -> Bool {
     return r >= range.r0 && r <= range.r1 && c >= range.c0 && c <= range.c1
 }
 
-public func rangeStats<Row, Column>(_ grid: [[HeatmapCell<Row, Column>]], range: HeatmapRange, hiddenSteps: [Int] = []) -> HeatmapStats<Row, Column> {
+public func rangeStats<Row: Sendable, Column: Sendable>(_ grid: [[HeatmapCell<Row, Column>]], range: HeatmapRange, hiddenSteps: [Int] = []) -> HeatmapStats<Row, Column> {
     var count = 0
     var missing = 0
     var total = 0.0
@@ -384,7 +399,7 @@ public func rangeStats<Row, Column>(_ grid: [[HeatmapCell<Row, Column>]], range:
     return HeatmapStats(count: count, missing: missing, mean: count > 0 ? total / Double(count) : nil, min: minCell, max: maxCell)
 }
 
-public func extremes<Row, Column>(_ grid: [[HeatmapCell<Row, Column>]]) -> (min: HeatmapCell<Row, Column>?, max: HeatmapCell<Row, Column>?) {
+public func extremes<Row: Sendable, Column: Sendable>(_ grid: [[HeatmapCell<Row, Column>]]) -> (min: HeatmapCell<Row, Column>?, max: HeatmapCell<Row, Column>?) {
     let stats = rangeStats(grid, range: HeatmapRange(r0: 0, r1: max(0, grid.count - 1), c0: 0, c1: Int.max))
     return (stats.min, stats.max)
 }

@@ -289,6 +289,31 @@ public func zoomRange(_ range: LogicalRange, anchor: Double, delta: Double) -> L
     return next.span < minVisibleBars ? nil : next
 }
 
+/// Pinch magnification above 1 shrinks the visible window. A spread gesture zooms in.
+func pinchZoomDelta(magnification: Double) -> Double? {
+    guard magnification > 0, magnification.isFinite else { return nil }
+    return -log(magnification) / zoomSpeed
+}
+
+/// Bars whose bodies overlap the logical window. Indices are positions in the sorted time axis.
+func visibleBarSpan(count: Int, range: LogicalRange) -> ClosedRange<Int>? {
+    guard count > 0, range.from.isFinite, range.to.isFinite, range.to >= range.from else { return nil }
+    let start = max(0, Int((range.from - halfBar).rounded(.up)))
+    let end = min(count - 1, Int((range.to + halfBar).rounded(.down)))
+    guard start <= end else { return nil }
+    return start...end
+}
+
+/// Distance from the top of the plot, as a fraction of its height. A log scale applies only when both ends are positive.
+func pricePlotFraction(value: Double, lower: Double, upper: Double, logScale: Bool) -> Double {
+    let logging = logScale && lower > 0 && upper > 0
+    func map(_ number: Double) -> Double { logging && number > 0 ? log10(number) : number }
+    let hi = map(upper)
+    let lo = map(lower)
+    let span = hi - lo == 0 ? 1 : hi - lo
+    return (hi - map(value)) / span
+}
+
 public func isLive(_ range: LogicalRange?, lastIndex: Int) -> Bool {
     range == nil || lastIndex < 0 || (range!.to >= Double(lastIndex) - halfBar)
 }
@@ -420,7 +445,7 @@ func jsToPrecision(_ value: Double, precision: Int) -> String {
         return precision <= 1 ? "0" : "0." + String(repeating: "0", count: precision - 1)
     }
     let negative = value < 0
-    var magnitude = abs(value)
+    let magnitude = abs(value)
     var exponent = Int(floor(log10(magnitude)))
     var scaled = (magnitude / pow(10, Double(exponent - precision + 1))).rounded()
     if scaled >= pow(10, Double(precision)) {

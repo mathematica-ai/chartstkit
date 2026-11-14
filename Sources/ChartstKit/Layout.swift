@@ -37,7 +37,7 @@ public enum QuantizeScale: String, Sendable {
 
 public struct Quantizer: Sendable {
     public var thresholds: [Double]
-    public var step: (Double) -> Int
+    public var step: @Sendable (Double) -> Int
 }
 
 public final class TreeNode {

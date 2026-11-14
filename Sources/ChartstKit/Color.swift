@@ -74,7 +74,7 @@ private func alphaOf(_ raw: String?) -> Double {
 }
 
 private func fromHex(_ input: String) -> RGBA? {
-    guard let match = input.range(of: "^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$", options: .regularExpression) else {
+    guard input.range(of: "^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$", options: .regularExpression) != nil else {
         return nil
     }
     let hex = String(input[input.index(input.startIndex, offsetBy: 1)..<input.endIndex])

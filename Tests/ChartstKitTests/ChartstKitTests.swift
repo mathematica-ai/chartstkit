@@ -1,3 +1,4 @@
+import Accessibility
 import XCTest
 @testable import ChartstKit
 
@@ -216,6 +217,28 @@ final class ChartstKitTests: XCTestCase {
         XCTAssertThrowsError(try tidyTree(root))
     }
 
+    func testZoomScaleAndHits() {
+        let wide = LogicalRange(from: 0, to: 10)
+        let zoomIn = pinchZoomDelta(magnification: 2)
+        let zoomed = zoomRange(wide, anchor: 5, delta: zoomIn ?? 0)
+        XCTAssertEqual(zoomed?.span ?? 0, 5, accuracy: 0.001)
+        let zoomOut = pinchZoomDelta(magnification: 0.5)
+        let wider = zoomRange(wide, anchor: 5, delta: zoomOut ?? 0)
+        XCTAssertEqual(wider?.span ?? 0, 20, accuracy: 0.001)
+        XCTAssertNil(pinchZoomDelta(magnification: 0))
+        XCTAssertNil(pinchZoomDelta(magnification: .nan))
+        XCTAssertEqual(pricePlotFraction(value: 100, lower: 10, upper: 1000, logScale: true), 0.5, accuracy: 0.0001)
+        XCTAssertEqual(pricePlotFraction(value: 5, lower: 0, upper: 10, logScale: true), 0.5, accuracy: 0.0001)
+        XCTAssertEqual(pricePlotFraction(value: 10, lower: 10, upper: 1000, logScale: false), 1, accuracy: 0.0001)
+        XCTAssertEqual(visibleBarSpan(count: 10, range: LogicalRange(from: -0.5, to: 9.5)), 0...9)
+        XCTAssertEqual(visibleBarSpan(count: 10, range: LogicalRange(from: 2.2, to: 5.2)), 2...5)
+        XCTAssertNil(visibleBarSpan(count: 0, range: wide))
+        let pad = CategoryPad(top: 16, right: 12, bottom: 28, left: 36)
+        XCTAssertEqual(categoryIndex(x: 40, y: 40, width: 640, height: 320, pad: pad, count: 2, orientation: .vertical), 0)
+        XCTAssertEqual(categoryIndex(x: 400, y: 20, width: 640, height: 320, pad: pad, count: 2, orientation: .vertical), 1)
+        XCTAssertNil(categoryIndex(x: 4, y: 40, width: 640, height: 320, pad: pad, count: 2, orientation: .vertical))
+    }
+
     func testViewsBuild() {
         _ = Sparkline(data: [1, nil, 4], area: true)
         _ = PieChart(data: [PieDatum(label: "A", value: 2)], innerRadius: 0.6, selectionMode: .multiple, drillOther: true)
@@ -235,6 +258,104 @@ final class ChartstKitTests: XCTestCase {
         _ = ChartPanes(panes: [HistogramPane(id: "volume", title: "Volume", data: [LinePoint(time: .unix(1), value: 2)])])
         _ = TimelineChart(lanes: [TimelineLane(id: "lane", title: "Lane", items: [TimelineItem(start: .unix(1), end: .unix(3), state: "confirmed", label: "Done")])])
         _ = ChartThemeProvider(p1Theme(.light, colourBlind: true)) { Sparkline(data: [1, 2, 3]) }
+    }
+
+    func testP0Surface() {
+        let locale = Locale(identifier: "en_GB")
+        let explicit = resolveAreaFill(areaTop: "rgba(0, 0, 0, 0.18)", areaBottom: "rgba(0, 0, 0, 0)", line: "#111111", opacity: 0.22)
+        XCTAssertEqual(explicit.top.a, 0.18, accuracy: 0.0001)
+        XCTAssertEqual(explicit.bottom.a, 0, accuracy: 0.0001)
+        let implied = resolveAreaFill(areaTop: nil, areaBottom: nil, line: "rgb(0, 0, 0)", opacity: 0.22)
+        XCTAssertEqual(implied.top.a, 0.22, accuracy: 0.0001)
+        XCTAssertEqual(implied.bottom.a, 0, accuracy: 0.0001)
+        XCTAssertEqual(ChartTheme.Line().areaOpacity, 0.22)
+
+        let ticks = niceAxisTicks(min: 0, max: 10, count: 4, locale: locale)
+        XCTAssertTrue(ticks.contains { abs($0.value - 2.5) < 0.0001 })
+        let unique = labelledAxisTicks([2.10, 2.14], locale: locale)
+        XCTAssertEqual(unique.count, 2)
+        XCTAssertEqual(Set(unique.map(\.label)).count, 2)
+
+        let origin = 1_767_312_000
+        let daily = (0..<40).map { origin + $0 * 86_400 }
+        let labels = timeAxisLabels(times: daily, visible: 10...20, calendar: utc)
+        XCTAssertFalse(labels.isEmpty)
+        XCTAssertTrue(labels.allSatisfy { (10...20).contains($0.index) })
+
+        let quarter = (0..<120).map { origin + $0 * 86_400 }
+        let full = LogicalRange(from: -halfBar, to: Double(quarter.count - 1) + halfBar)
+        let month = presetLogicalRange(times: quarter, preset: .oneMonth)
+        XCTAssertNotNil(month)
+        XCTAssertLessThan(month?.span ?? full.span, full.span)
+        XCTAssertNil(presetLogicalRange(times: quarter, preset: .all))
+
+        XCTAssertEqual(logicalRangeAfterUpdate(preset: .oneMonth, times: quarter, followLive: false, userAdjusted: false, current: full), full)
+        let slid = logicalRangeAfterUpdate(preset: .oneMonth, times: quarter, followLive: true, userAdjusted: false, current: full)
+        XCTAssertEqual(slid, month)
+        XCTAssertEqual(logicalRangeAfterUpdate(preset: .oneMonth, times: quarter, followLive: true, userAdjusted: true, current: full), full)
+        XCTAssertNil(logicalRangeAfterUpdate(preset: nil, times: quarter, followLive: true, userAdjusted: false, current: full))
+        XCTAssertEqual(logicalRangeAfterUpdate(preset: nil, times: quarter, followLive: false, userAdjusted: false, current: full), full)
+
+        let window = LogicalRange(from: 0, to: 9)
+        let anchor = logicalIndex(atX: 200, plotMinX: 0, plotWidth: 300, range: window)
+        XCTAssertEqual(anchor, 6, accuracy: 0.0001)
+        let zoomed = zoomRange(window, anchor: anchor, delta: pinchZoomDelta(magnification: 2) ?? 0)
+        XCTAssertNotNil(zoomed)
+        let before = (anchor - window.from) / window.span
+        let after = (anchor - zoomed!.from) / zoomed!.span
+        XCTAssertEqual(before, after, accuracy: 0.0001)
+
+        XCTAssertNil(selectionReport(times: [], index: 0))
+        XCTAssertEqual(selectionReport(times: [origin], index: 0)?.time, origin)
+
+        let summary = ChartSummary.make(
+            open: 10, close: 12, high: 13, low: 9,
+            highOn: Date(timeIntervalSince1970: TimeInterval(origin)),
+            lowOn: Date(timeIntervalSince1970: TimeInterval(origin)),
+            from: Date(timeIntervalSince1970: TimeInterval(origin)),
+            to: Date(timeIntervalSince1970: TimeInterval(origin + 86_400)),
+            change: 20,
+            asOf: Date(timeIntervalSince1970: TimeInterval(origin)),
+            formatValue: { String($0) },
+            formatDate: { _ in "2 Jan 2026" }
+        )
+        XCTAssertTrue(summary.contains("Up"))
+        XCTAssertTrue(summary.contains("high"))
+        XCTAssertTrue(summary.contains("low"))
+        XCTAssertTrue(summary.contains("As of"))
+
+        let rows = [
+            PlotRow(time: origin, open: 1, high: 3, low: 0.5, close: 2),
+            PlotRow(time: origin + 86_400, open: 2, high: 2.2, low: 1, close: 1.4),
+            PlotRow(time: origin + 172_800, open: 1.4, high: 4, low: 1.2, close: 3),
+        ]
+        let samples = seriesWindowSamples(
+            series: [(id: "price", name: "Price", continuous: true, candle: false, rows: rows)],
+            times: rows.map(\.time),
+            visible: 0...2,
+            formatValue: { _, value in String(value) },
+            formatTime: { String($0) }
+        )
+        let chart = makeAccessibleChart(title: "Price", summary: nil, samples: samples, categorical: false)
+        XCTAssertEqual(chart.series.first?.dataPoints.count, rows.count)
+        let marks = seriesLandmarks(rows: rows, formatValue: { String($0) }, formatTime: { String($0) })
+        XCTAssertTrue(marks.contains { $0.id == "high" })
+        XCTAssertTrue(marks.contains { $0.id == "low" })
+
+        let missing = heatmapSeriesSamples(rows: ["Mon"], columns: ["AM"], values: [[nil]], formatValue: { String($0) })
+        XCTAssertTrue(missing.first?.points.first?.label.contains("no data") == true)
+
+        if case .empty = resolveChartState(.ready, hasRows: false) {} else { XCTFail("Ready with no rows is empty") }
+        XCTAssertFalse(chartStateDrawsSeries(.loading))
+        XCTAssertEqual(chartStatePresentation(.failed(reason: ""), formatTime: { _ in "" }).message, "Couldn't load this chart.")
+
+        let tip = clampedTooltipOrigin(anchor: 190, width: 40, plotMin: 0, plotMax: 200)
+        XCTAssertGreaterThanOrEqual(tip, 0)
+        XCTAssertLessThanOrEqual(tip + 40, 200)
+        XCTAssertTrue(scrubReadout(time: "2 Jan", value: "12", delta: 1.2) { String($0) }.contains("up"))
+        XCTAssertNil(chartMotion(reduceMotion: true))
+        XCTAssertEqual(ChartChrome.embedded.scrub, .ruleAndDot)
+        XCTAssertFalse(ChartChrome.embedded.pan)
     }
 
     private var utc: Calendar {

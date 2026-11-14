@@ -9,6 +9,7 @@ public struct Sparkline: View {
     public var ariaLabel: String
 
     @Environment(\.chartTheme) private var environmentTheme
+    @Environment(\.chartAccessibility) private var chartAccessibility
 
     public init(data: [Double?], width: CGFloat = 80, height: CGFloat = 22, color: String? = nil, area: Bool = false, ariaLabel: String = "Sparkline") {
         self.data = data
@@ -24,21 +25,17 @@ public struct Sparkline: View {
         let runs = sparklineRuns(data.map { SparklineDatum.number($0) }, width: width, height: height)
         let stroke = chartColor(color, fallback: chartColor(theme.palette.text, fallback: .primary))
         Canvas { context, _ in
-            if area, let run = runs.first, let finiteMin = data.compactMap({ $0 }).min() {
-                let values = data.map { $0 }
-                let place = runs
-                _ = place
-                var path = Path()
-                guard let first = run.first, let last = run.last else { return }
-                path.move(to: CGPoint(x: first.x, y: first.y))
-                for point in run.dropFirst() { path.addLine(to: CGPoint(x: point.x, y: point.y)) }
-                let baseline = run.map(\.y).max() ?? last.y
-                path.addLine(to: CGPoint(x: last.x, y: baseline))
-                path.addLine(to: CGPoint(x: first.x, y: baseline))
-                path.closeSubpath()
-                context.fill(path, with: .color(stroke.opacity(0.12)))
-                _ = finiteMin
-                _ = values
+            if area, let baseline = runs.flatMap(\.self).map(\.y).max() {
+                for run in runs {
+                    guard let first = run.first, let last = run.last else { continue }
+                    var path = Path()
+                    path.move(to: CGPoint(x: first.x, y: first.y))
+                    for point in run.dropFirst() { path.addLine(to: CGPoint(x: point.x, y: point.y)) }
+                    path.addLine(to: CGPoint(x: last.x, y: baseline))
+                    path.addLine(to: CGPoint(x: first.x, y: baseline))
+                    path.closeSubpath()
+                    context.fill(path, with: .color(stroke.opacity(0.12)))
+                }
             }
             for run in runs {
                 var path = Path()
@@ -49,7 +46,7 @@ public struct Sparkline: View {
             }
         }
         .frame(width: width, height: height)
-        .accessibilityLabel(ariaLabel)
+        .chartAccess(chartAccessibility, title: ariaLabel, summary: ariaLabel, samples: sparklineSamples(data), categorical: false)
     }
 }
 
@@ -68,6 +65,7 @@ public struct PieChart: View {
     public var onSelectionChange: (([String]) -> Void)?
 
     @Environment(\.chartTheme) private var environmentTheme
+    @Environment(\.chartAccessibility) private var chartAccessibility
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var state: PieChartState
     @State private var tooltip: String?
@@ -111,31 +109,36 @@ public struct PieChart: View {
                 Button("Back") { state.back() }
                     .font(chartFont(theme.label, mono: true))
             }
-            Canvas { context, size in
-                let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                let outer = min(size.width, size.height) * 0.34
-                let inner = outer * innerRadius
-                for slice in slices {
-                    let path = wedge(center: center, inner: inner, outer: outer, start: slice.startAngle, end: slice.endAngle)
-                    let fill = unstyled ? Color.primary : chartColor(slice.color ?? categorical(theme, slice.index), fallback: .primary)
-                    let dimmed = emphasis == .dim && state.activeKey != nil && state.activeKey != slice.key
-                    context.fill(path, with: .color(dimmed ? fill.opacity(theme.pie.dimOpacity) : fill))
-                    if slice.selected {
-                        context.stroke(path, with: .color(chartColor(theme.pie.selectionColor)), lineWidth: theme.pie.selectionWidth)
+            GeometryReader { geo in
+                Canvas { context, size in
+                    let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                    let outer = min(size.width, size.height) * 0.34
+                    let inner = outer * innerRadius
+                    for slice in slices {
+                        let path = wedge(center: center, inner: inner, outer: outer, start: slice.startAngle, end: slice.endAngle)
+                        let fill = unstyled ? Color.primary : chartColor(slice.color ?? categorical(theme, slice.index), fallback: .primary)
+                        let dimmed = emphasis == .dim && state.activeKey != nil && state.activeKey != slice.key
+                        context.fill(path, with: .color(dimmed ? fill.opacity(theme.pie.dimOpacity) : fill))
+                        if slice.selected {
+                            context.stroke(path, with: .color(chartColor(theme.pie.selectionColor)), lineWidth: theme.pie.selectionWidth)
+                        }
                     }
                 }
+                .contentShape(Rectangle())
+                .simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { value in
+                    guard let slice = hit(value.location, size: geo.size) else { return }
+                    state.activate(slice.key)
+                    tooltip = "\(slice.label) \(formatShare(slice.share))"
+                })
+                .gesture(SpatialTapGesture().onEnded { value in
+                    guard let slice = hit(value.location, size: geo.size) else { return }
+                    state.activate(slice.key)
+                    state.click(slice.key)
+                    tooltip = "\(slice.label) \(formatShare(slice.share))"
+                    onSelectionChange?(state.selectedKeys)
+                })
             }
             .frame(height: 280)
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { value in
-                guard let slice = hit(value.location, size: CGSize(width: 320, height: 280)) else { return }
-                state.activate(slice.key)
-                tooltip = "\(slice.label) \(formatShare(slice.share))"
-            }.onEnded { value in
-                guard let slice = hit(value.location, size: CGSize(width: 320, height: 280)) else { return }
-                state.click(slice.key)
-                onSelectionChange?(state.selectedKeys)
-            })
             .overlay(alignment: .center) {
                 if innerRadius > 0 {
                     VStack(spacing: 2) {
@@ -165,7 +168,16 @@ public struct PieChart: View {
             legend(theme, slices: state.slices)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(ariaLabel)
+        .chartAccess(
+            chartAccessibility,
+            title: ariaLabel,
+            summary: ariaLabel,
+            samples: pieSeriesSamples(slices: state.slices.filter { !$0.hidden }.map { (label: $0.label, share: $0.share) }),
+            categorical: true
+        )
+        .accessibilityAdjustableAction { direction in
+            state.move(by: direction == .increment ? 1 : -1)
+        }
         .onChange(of: data) { _, newValue in
             state = PieChartState(data: newValue, maxSlices: maxSlices, otherLabel: otherLabel, selectionMode: selectionMode, drillOther: drillOther)
         }
@@ -232,6 +244,7 @@ public struct Heatmap: View {
     public var onSelectionChange: ((HeatmapRange?, Int, Double?) -> Void)?
 
     @Environment(\.chartTheme) private var environmentTheme
+    @Environment(\.chartAccessibility) private var chartAccessibility
     @State private var active: HeatmapPosition?
     @State private var selection: HeatmapRange?
     @State private var anchor: HeatmapPosition?
@@ -301,14 +314,19 @@ public struct Heatmap: View {
                 }
             }
             .frame(width: layout.width, height: layout.height)
-            .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+            .simultaneousGesture(DragGesture(minimumDistance: 8).onChanged { value in
                 guard let pos = cellAt(layout, x: value.location.x, y: value.location.y, clamp: selectionMode == .range) else { return }
                 active = pos
                 if selectionMode == .range, let anchor {
                     selection = normaliseRange(anchor, pos)
                 }
             }.onEnded { value in
+                guard selectionMode == .range, let pos = cellAt(layout, x: value.location.x, y: value.location.y) else { return }
+                commit(pos)
+            })
+            .simultaneousGesture(SpatialTapGesture().onEnded { value in
                 guard let pos = cellAt(layout, x: value.location.x, y: value.location.y) else { return }
+                active = pos
                 commit(pos)
             })
         }
@@ -320,7 +338,16 @@ public struct Heatmap: View {
         .onKeyPress(.downArrow) { nudge(1, 0); return .handled }
         .onKeyPress(.escape) { selection = nil; anchor = nil; publish(); return .handled }
         .onKeyPress(.return) { if let active { commit(active) }; return .handled }
-        .accessibilityLabel(ariaLabel)
+        .chartAccess(
+            chartAccessibility,
+            title: ariaLabel,
+            summary: ariaLabel,
+            samples: heatmapSeriesSamples(rows: rows, columns: columns, values: values, formatValue: formatChartNumber),
+            categorical: true
+        )
+        .accessibilityAdjustableAction { direction in
+            nudge(0, direction == .increment ? 1 : -1)
+        }
         .overlay(alignment: .bottomLeading) { legend(theme, cuts: cuts, stepCount: stepCount) }
     }
 

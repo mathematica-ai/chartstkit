@@ -76,17 +76,19 @@ public struct ChartTheme: Equatable, Sendable {
         public var width: Double?
         public var areaTop: String?
         public var areaBottom: String?
+        public var areaOpacity: Double
         public var baselineTopFill: String?
         public var baselineBottomFill: String?
         public var overlays: [String]
         public init(
             color: String? = nil, width: Double? = nil, areaTop: String? = nil, areaBottom: String? = nil,
-            baselineTopFill: String? = nil, baselineBottomFill: String? = nil, overlays: [String] = []
+            areaOpacity: Double = 0.22, baselineTopFill: String? = nil, baselineBottomFill: String? = nil, overlays: [String] = []
         ) {
             self.color = color
             self.width = width
             self.areaTop = areaTop
             self.areaBottom = areaBottom
+            self.areaOpacity = areaOpacity
             self.baselineTopFill = baselineTopFill
             self.baselineBottomFill = baselineBottomFill
             self.overlays = overlays

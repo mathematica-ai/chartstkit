@@ -29,7 +29,7 @@ targets:
       - package: ChartstKit
 ```
 
-Pass `chrome: .embedded` when the screen already has its own range control and readout. Resolve the host palette to `rgba(...)` strings and put them on a `ChartTheme`. ChartstKit does not read system colors itself. `.terminal` is the default and keeps pan, pinch, axes, and the tooltip.
+Pass `chrome: .embedded` when the screen already has its own range control and readout. Embedded chrome draws the series, a vertical rule, and a dot on the active value. It does not pan, zoom, or draw axes. Bind `selection` when the host wants the scrubbed values. Resolve the host palette to `rgba(...)` strings and put them on a `ChartTheme`. ChartstKit does not read system colours itself. `.terminal` is the default and keeps pan, pinch, axes, and the tooltip.
 
 ```swift
 import ChartstKit
@@ -79,14 +79,17 @@ p1-charts uses a mouse. ChartstKit uses the same state machines with touch:
 
 | Web | iOS |
 | --- | --- |
-| Wheel and ctrl-wheel | Pinch, on the terminal profile and on line, bar, histogram, and candlestick charts |
-| Drag | Pan, and the crosshair follows the finger |
-| Shift-drag range select | Long-press, then drag. The chart zooms to that window |
-| Double-click reset | Double-tap |
-| Arrow keys, Enter, Space, Escape | Hardware keyboard, once the chart is focused |
-| Hover tooltip | The finger sets the active bar, slice, cell, or point |
+| Wheel and ctrl-wheel | Pinch, anchored where the gesture starts, when zoom is on |
+| Drag | Pan, and the crosshair follows, when pan is on |
+| Scrub inside a scroll view | Editorial time series and embedded chrome do not pan. A sideways drag, or a 0.2s long-press then a drag, moves the rule. Lifting clears the selection unless `sticky` is on |
+| Shift-drag range select | Long-press, then drag, when range select is on. The chart zooms to that window |
+| Double-click reset | Double-tap, when double-tap reset is on |
+| Arrow keys, Enter, Space, Escape | Hardware keyboard, once the chart is focused. VoiceOver's adjustable action moves the same crosshair |
+| Hover tooltip | Terminal chrome draws the tooltip. Embedded chrome leaves the readout to the host |
 
-`TimeSeriesChart` defaults to the editorial profile: pinch zoom off, crosshair on the bar, no price flash, no follow-live, no jump-to-live button. `profile: .terminal` turns pinch zoom and the magnet crosshair on. Price flash, follow-live, range presets, and the live button stay on `LineChart`, `BarChart`, `HistogramChart`, and `CandlestickChart`.
+`TimeSeriesChart` defaults to the editorial profile. Pan, pinch, range select, double-tap reset, price flash, follow-live, range presets, and the live button are off. A scrub draws a rule and a dot. `profile: .terminal` turns on pan, pinch, the magnet crosshair, range select, double-tap reset, and a tooltip. Price flash, follow-live, range presets, and the live button stay on `LineChart`, `BarChart`, `HistogramChart`, and `CandlestickChart`.
+
+An area fills from `areaTop` down to `areaBottom`. An explicit colour is used as given. A missing top uses the line colour at `theme.line.areaOpacity` (0.22). A missing bottom fades to clear. A baseline fades each side to clear at the base. Loading, empty, and failed charts draw a dotted baseline and no series. `.ready` with no rows is treated as empty. `.partial` fades the last mark to 45% opacity.
 
 ## Theme
 
@@ -113,7 +116,7 @@ An ordinal axis takes `categories`. Point time is the label or a 0-based index. 
 swift test
 ```
 
-The tests cover the ported math: time, binning, candles, presets, bands, colour, pie, heatmap, category layout, scatter, polar, sparkline, ribbons, and timelines. Rendering is exercised by building every chart view.
+The tests cover the ported math and the surface helpers: time, binning, candles, presets, bands, colour, pie, heatmap, category layout, scatter, polar, sparkline, ribbons, timelines, area fills, axis ticks, the live window, and the VoiceOver summary. Rendering is exercised by building every chart view.
 
 ## License
 
