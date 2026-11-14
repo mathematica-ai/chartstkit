@@ -111,8 +111,40 @@ struct DrawnSeries {
 
 enum SeriesKind { case line, area, baseline, histogram, bar, candle }
 
+/// What a host app leaves to the chart. `.terminal` is the trading surface.
+/// `.embedded` draws the series only, so the host keeps its own axes, readout, and gestures.
+public struct ChartChrome: Equatable, Sendable {
+    public var zoom: Bool
+    public var pan: Bool
+    public var magnet: Bool
+    public var flash: Bool
+    public var followLive: Bool
+    public var rangeSelect: Bool
+    public var doubleTapReset: Bool
+    public var liveButton: Bool
+    public var axes: Bool
+    public var tooltip: Bool
+
+    public init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true) {
+        self.zoom = zoom
+        self.pan = pan
+        self.magnet = magnet
+        self.flash = flash
+        self.followLive = followLive
+        self.rangeSelect = rangeSelect
+        self.doubleTapReset = doubleTapReset
+        self.liveButton = liveButton
+        self.axes = axes
+        self.tooltip = tooltip
+    }
+
+    public static let terminal = ChartChrome()
+    public static let embedded = ChartChrome(zoom: false, pan: false, magnet: false, flash: false, followLive: false, rangeSelect: false, doubleTapReset: false, liveButton: false, axes: false, tooltip: false)
+}
+
 struct SeriesChrome {
     var zoom = true
+    var pan = true
     var magnet = true
     var flash = true
     var followLive = true
@@ -121,10 +153,13 @@ struct SeriesChrome {
     var autoBucket = false
     var minBarWidth: Double = 6
     var liveButton = true
+    var axes = true
+    var tooltip = true
     var profile: TimeSeriesProfile = .terminal
 
-    init(zoom: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, autoBucket: Bool = false, minBarWidth: Double = 6, liveButton: Bool = true, profile: TimeSeriesProfile = .terminal) {
+    init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, autoBucket: Bool = false, minBarWidth: Double = 6, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, profile: TimeSeriesProfile = .terminal) {
         self.zoom = zoom
+        self.pan = pan
         self.magnet = magnet
         self.flash = flash
         self.followLive = followLive
@@ -133,7 +168,13 @@ struct SeriesChrome {
         self.autoBucket = autoBucket
         self.minBarWidth = minBarWidth
         self.liveButton = liveButton
+        self.axes = axes
+        self.tooltip = tooltip
         self.profile = profile
+    }
+
+    init(_ chrome: ChartChrome) {
+        self.init(zoom: chrome.zoom, pan: chrome.pan, magnet: chrome.magnet, flash: chrome.flash, followLive: chrome.followLive, rangeSelect: chrome.rangeSelect, doubleTapReset: chrome.doubleTapReset, liveButton: chrome.liveButton, axes: chrome.axes, tooltip: chrome.tooltip, profile: chrome.magnet ? .terminal : .editorial)
     }
 }
 
@@ -251,6 +292,7 @@ struct SeriesPlot: View {
     }
 
     private func pads(for series: [DrawnSeries]) -> (top: CGFloat, right: CGFloat, bottom: CGFloat, left: CGFloat) {
+        if !chrome.axes { return (6, 8, 6, 8) }
         let right: CGFloat = series.contains { $0.scale == .right } || series.isEmpty ? 48 : 12
         let left: CGFloat = series.contains { $0.scale == .left } ? 48 : 12
         return (12, right, 28, left == 12 && right == 48 ? 12 : left)
@@ -260,6 +302,7 @@ struct SeriesPlot: View {
         let leftDomain = domain(.left, prepared, range)
         let rightDomain = domain(.right, prepared, range)
         context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(chartColor(theme.palette.background)))
+        if chrome.axes {
         for tick in axisTicks(min: rightDomain.0, max: rightDomain.1) {
             let y = yPos(tick, domain: rightDomain, plot: plot)
             var path = Path()
@@ -267,6 +310,7 @@ struct SeriesPlot: View {
             path.addLine(to: CGPoint(x: plot.maxX, y: y))
             context.stroke(path, with: .color(chartColor(theme.palette.grid)), lineWidth: 1)
             context.draw(Text(formatChartNumber(tick)).font(chartFont(theme.axis, mono: true)).foregroundStyle(chartColor(theme.palette.text)), at: CGPoint(x: plot.maxX + 22, y: y))
+        }
         }
         for band in sortBands(bands) {
             guard let span = bandSpan(band.start, band.end, times: prepared.times, plot: plot, range: range) else { continue }
@@ -326,8 +370,8 @@ struct SeriesPlot: View {
             context.stroke(path, with: .color(chartColor(theme.anchorColor, fallback: chartColor(theme.palette.neutral))), style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
             _ = index
         }
-        if let crosshair, prepared.times.indices.contains(crosshair) {
-            let x = chrome.magnet || chrome.profile == .terminal ? xPos(Double(crosshair), plot: plot, range: range) : xPos(Double(crosshair), plot: plot, range: range)
+        if (chrome.magnet || chrome.tooltip), let crosshair, prepared.times.indices.contains(crosshair) {
+            let x = xPos(Double(crosshair), plot: plot, range: range)
             var path = Path()
             path.move(to: CGPoint(x: x, y: plot.minY))
             path.addLine(to: CGPoint(x: x, y: plot.maxY))
@@ -337,7 +381,7 @@ struct SeriesPlot: View {
             let rect = CGRect(x: min(selection.0, selection.1), y: plot.minY, width: abs(selection.1 - selection.0), height: plot.height)
             context.fill(Path(rect), with: .color(chartColor(theme.palette.crosshair).opacity(0.15)))
         }
-        let labelCount = min(4, prepared.times.count)
+        let labelCount = chrome.axes ? min(4, prepared.times.count) : 0
         if labelCount > 0 {
             for step in 0..<labelCount {
                 let index = prepared.times.count == 1 ? 0 : Int((Double(step) / Double(labelCount - 1)) * Double(prepared.times.count - 1))
@@ -396,7 +440,7 @@ struct SeriesPlot: View {
             lastX = point.x
         }
         if item.kind == .area || item.kind == .baseline, started {
-            let baseY = yPos(item.kind == .baseline ? item.base : domain.0, domain: domain, plot: plot)
+            let baseY = (!chrome.axes && item.kind == .area) ? plot.maxY : yPos(item.kind == .baseline ? item.base : domain.0, domain: domain, plot: plot)
             area.addLine(to: CGPoint(x: lastX, y: baseY))
             area.addLine(to: CGPoint(x: firstX, y: baseY))
             area.closeSubpath()
@@ -524,14 +568,18 @@ struct SeriesPlot: View {
     }
 
     private func drag(plot: CGRect, prepared: Prepared, range: LogicalRange) -> some Gesture {
-        DragGesture(minimumDistance: 8).onChanged { value in
+        DragGesture(minimumDistance: chrome.pan ? 8 : 0).onChanged { value in
             if selecting { return }
-            let base = panStart ?? range
-            if panStart == nil { panStart = base }
-            let shift = -Double(value.translation.width / max(plot.width, 1)) * base.span
-            logical = LogicalRange(from: base.from + shift, to: base.to + shift)
-            userAdjusted = true
-            crosshair = indexAt(value.location.x, plot: plot, range: logical ?? range, count: prepared.times.count)
+            if chrome.pan {
+                let base = panStart ?? range
+                if panStart == nil { panStart = base }
+                let shift = -Double(value.translation.width / max(plot.width, 1)) * base.span
+                logical = LogicalRange(from: base.from + shift, to: base.to + shift)
+                userAdjusted = true
+            }
+            let index = indexAt(value.location.x, plot: plot, range: logical ?? range, count: prepared.times.count)
+            crosshair = index
+            onPointClick?(prepared.times[safe: index] ?? 0, hits(prepared, index: index))
         }.onEnded { _ in panStart = nil }
     }
 
@@ -596,7 +644,7 @@ struct SeriesPlot: View {
     }
 
     @ViewBuilder private func tooltip(_ prepared: Prepared, plot: CGRect, range: LogicalRange) -> some View {
-        if let crosshair, prepared.times.indices.contains(crosshair) {
+        if chrome.tooltip, let crosshair, prepared.times.indices.contains(crosshair) {
             let time = prepared.times[crosshair]
             let title = categories.flatMap { ordinalLabel(time, categories: $0).isEmpty ? nil : ordinalLabel(time, categories: $0) } ?? formatTime?(time) ?? defaultTimeLabel(unix: time, timeVisible: timeVisible)
             TooltipBox(title: title, rows: prepared.series.compactMap { item in
@@ -646,13 +694,15 @@ public struct LineChart: View {
     public var ariaLabel: String
     public var themeOverride: ChartTheme?
     public var baseValue: Double
+    public var markers: [TimeSeriesMarker]
+    public var chrome: ChartChrome
     public var onPointClick: ((Int, [(String, Double)]) -> Void)?
     public var onRangeSelect: ((VisibleStats) -> Void)?
     public var onReset: (() -> Void)?
 
     @Environment(\.chartTheme) private var environmentTheme
 
-    public init(data: [LinePoint], variant: LineVariant = .line, bands: [BandItem] = [], bandStyles: [String: BandStyleInput] = [:], overlays: [[LinePoint]] = [], range: RangePreset? = nil, anchor: ChartTime? = nil, logScale: Bool = false, height: CGFloat = 340, ariaLabel: String = "Line chart", theme: ChartTheme? = nil, baseValue: Double = 0, onPointClick: ((Int, [(String, Double)]) -> Void)? = nil, onRangeSelect: ((VisibleStats) -> Void)? = nil, onReset: (() -> Void)? = nil) {
+    public init(data: [LinePoint], variant: LineVariant = .line, bands: [BandItem] = [], bandStyles: [String: BandStyleInput] = [:], overlays: [[LinePoint]] = [], range: RangePreset? = nil, anchor: ChartTime? = nil, logScale: Bool = false, height: CGFloat = 340, ariaLabel: String = "Line chart", theme: ChartTheme? = nil, baseValue: Double = 0, markers: [TimeSeriesMarker] = [], chrome: ChartChrome = .terminal, onPointClick: ((Int, [(String, Double)]) -> Void)? = nil, onRangeSelect: ((VisibleStats) -> Void)? = nil, onReset: (() -> Void)? = nil) {
         self.data = data
         self.variant = variant
         self.bands = bands
@@ -665,6 +715,8 @@ public struct LineChart: View {
         self.ariaLabel = ariaLabel
         self.themeOverride = theme
         self.baseValue = baseValue
+        self.markers = markers
+        self.chrome = chrome
         self.onPointClick = onPointClick
         self.onRangeSelect = onRangeSelect
         self.onReset = onReset
@@ -672,7 +724,7 @@ public struct LineChart: View {
 
     public var body: some View {
         let theme = themeOverride ?? environmentTheme
-        SeriesPlot(series: lineSeries(theme), bands: bands, bandStyles: bandStyles, ribbons: [], guides: [], ranges: [], markers: [], chrome: SeriesChrome(), logScale: logScale, preset: preset, anchor: anchor, histogramMode: .plain, threshold: nil, coloring: .direction, height: height, ariaLabel: ariaLabel, categories: nil, timeVisible: false, theme: theme, formatTime: nil, formatValue: nil, onPointClick: onPointClick, onRangeSelect: onRangeSelect, onReset: onReset, onVisibleStats: nil)
+        SeriesPlot(series: lineSeries(theme), bands: bands, bandStyles: bandStyles, ribbons: [], guides: [], ranges: [], markers: markers, chrome: SeriesChrome(chrome), logScale: logScale, preset: preset, anchor: anchor, histogramMode: .plain, threshold: nil, coloring: .direction, height: height, ariaLabel: ariaLabel, categories: nil, timeVisible: false, theme: theme, formatTime: nil, formatValue: nil, onPointClick: onPointClick, onRangeSelect: onRangeSelect, onReset: onReset, onVisibleStats: nil)
     }
 
     private func lineSeries(_ theme: ChartTheme) -> [DrawnSeries] {
@@ -756,10 +808,12 @@ public struct CandlestickChart: View {
     public var height: CGFloat
     public var ariaLabel: String
     public var themeOverride: ChartTheme?
+    public var chrome: ChartChrome
+    public var onPointClick: ((Int, [(String, Double)]) -> Void)?
     public var onRangeSelect: ((VisibleStats) -> Void)?
     @Environment(\.chartTheme) private var environmentTheme
 
-    public init(data: [OHLC], coloring: CandlestickColoring = .direction, bands: [BandItem] = [], range: RangePreset? = nil, height: CGFloat = 340, ariaLabel: String = "Candlestick chart", theme: ChartTheme? = nil, onRangeSelect: ((VisibleStats) -> Void)? = nil) {
+    public init(data: [OHLC], coloring: CandlestickColoring = .direction, bands: [BandItem] = [], range: RangePreset? = nil, height: CGFloat = 340, ariaLabel: String = "Candlestick chart", theme: ChartTheme? = nil, chrome: ChartChrome = .terminal, onPointClick: ((Int, [(String, Double)]) -> Void)? = nil, onRangeSelect: ((VisibleStats) -> Void)? = nil) {
         self.data = data
         self.coloring = coloring
         self.bands = bands
@@ -767,12 +821,14 @@ public struct CandlestickChart: View {
         self.height = height
         self.ariaLabel = ariaLabel
         self.themeOverride = theme
+        self.chrome = chrome
+        self.onPointClick = onPointClick
         self.onRangeSelect = onRangeSelect
     }
 
     public var body: some View {
         let theme = themeOverride ?? environmentTheme
-        SeriesPlot(series: [candleSeries(theme)], bands: bands, bandStyles: [:], ribbons: [], guides: [], ranges: [], markers: [], chrome: SeriesChrome(), logScale: false, preset: preset, anchor: nil, histogramMode: .plain, threshold: nil, coloring: coloring, height: height, ariaLabel: ariaLabel, categories: nil, timeVisible: false, theme: theme, formatTime: nil, formatValue: nil, onPointClick: nil, onRangeSelect: onRangeSelect, onReset: nil, onVisibleStats: nil)
+        SeriesPlot(series: [candleSeries(theme)], bands: bands, bandStyles: [:], ribbons: [], guides: [], ranges: [], markers: [], chrome: SeriesChrome(chrome), logScale: false, preset: preset, anchor: nil, histogramMode: .plain, threshold: nil, coloring: coloring, height: height, ariaLabel: ariaLabel, categories: nil, timeVisible: false, theme: theme, formatTime: nil, formatValue: nil, onPointClick: onPointClick, onRangeSelect: onRangeSelect, onReset: nil, onVisibleStats: nil)
     }
 
     private func candleSeries(_ theme: ChartTheme) -> DrawnSeries {

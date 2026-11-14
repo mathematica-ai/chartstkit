@@ -48,6 +48,7 @@ These four keep the terminal surface.
 | Auto bucket | `nextBucketSize` doubles until each bar is at least `minBarWidth` points. The public line, bar, histogram, and candlestick views fit every bar; call `nextBucketSize` and `aggregateCandles` or `aggregatePoints` when you want coarser buckets |
 | Price flash | The last point flashes up or down when the latest close changes |
 | Follow live | The view stays on the last bar until the user pans. A Live button jumps back |
+| Chrome | `chrome: .terminal` (default) keeps pan, pinch, magnet, flash, follow-live, range select, axes, and the tooltip. `chrome: .embedded` draws the series only. A drag still reports `onPointClick`. `LineChart` also takes `markers` |
 | Anchor | A dashed horizontal line at the close of the bar at or before `anchor` |
 | Bands | `bands` plus `bandStyles`. A band covers `from` up to, not including, `to`. `bandAt` reports the hovered key |
 | Overlays | Extra lines on `LineChart` |

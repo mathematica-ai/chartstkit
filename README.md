@@ -16,6 +16,21 @@ Add the package in Xcode, or in `Package.swift`:
 
 The library links as `ChartstKit` and needs iOS 17 or macOS 14.
 
+In an XcodeGen project:
+
+```yaml
+packages:
+  ChartstKit:
+    url: https://github.com/mathematica-ai/chartstkit.git
+    branch: main
+targets:
+  App:
+    dependencies:
+      - package: ChartstKit
+```
+
+Pass `chrome: .embedded` when the screen already has its own range control and readout. Resolve the host palette to `rgba(...)` strings and put them on a `ChartTheme`. ChartstKit does not read system colors itself. `.terminal` is the default and keeps pan, pinch, axes, and the tooltip.
+
 ```swift
 import ChartstKit
 
