@@ -29,7 +29,7 @@ targets:
       - package: ChartstKit
 ```
 
-Pass `chrome: .embedded` when the screen already has its own range control and readout. On `0.1.0`, embedded chrome draws the series only. It does not pan, zoom, draw axes, or draw a scrub rule. This branch, after that tag, draws a vertical rule and a dot on the active value. Bind `selection` when the host wants the scrubbed values. Resolve the host palette to `rgba(...)` strings and put them on a `ChartTheme`. ChartstKit does not read system colours itself. `.terminal` is the default and keeps pan, pinch, axes, and the tooltip.
+Pass `chrome: .embedded` when the screen already has its own range control and readout. On `0.1.0`, embedded chrome draws the series only. It does not pan, zoom, draw axes, or draw a scrub rule. This branch, after that tag, draws a vertical rule and a dot on the active value. `chrome: .inspect` is that same chart, and a drag reads the close under the finger. The rule stays. The page does not scroll while the finger is on the plot. Bind `selection` when the host wants the scrubbed values. Resolve the host palette to `rgba(...)` strings and put them on a `ChartTheme`. ChartstKit does not read system colours itself. `.terminal` is the default and keeps pan, pinch, axes, and the tooltip.
 
 ```swift
 import ChartstKit

@@ -134,8 +134,10 @@ public struct ChartChrome: Equatable, Sendable {
     public var scrub: ScrubStyle
     public var sticky: Bool
     public var showExtremes: Bool
+    /// A drag on the plot reads a bar and does not scroll the page.
+    public var claimsDrag: Bool
 
-    public init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, scrub: ScrubStyle = .ruleDotAndTooltip, sticky: Bool = false, showExtremes: Bool = false) {
+    public init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, scrub: ScrubStyle = .ruleDotAndTooltip, sticky: Bool = false, showExtremes: Bool = false, claimsDrag: Bool = false) {
         self.zoom = zoom
         self.pan = pan
         self.magnet = magnet
@@ -149,10 +151,13 @@ public struct ChartChrome: Equatable, Sendable {
         self.scrub = scrub
         self.sticky = sticky
         self.showExtremes = showExtremes
+        self.claimsDrag = claimsDrag
     }
 
     public static let terminal = ChartChrome()
     public static let embedded = ChartChrome(zoom: false, pan: false, magnet: false, flash: false, followLive: false, rangeSelect: false, doubleTapReset: false, liveButton: false, axes: false, tooltip: false, scrub: .ruleAndDot)
+    /// A finger on the line reads that close. The rule stays. The page does not scroll.
+    public static let inspect = ChartChrome(zoom: false, pan: false, magnet: false, flash: false, followLive: false, rangeSelect: false, doubleTapReset: false, liveButton: false, axes: false, tooltip: false, scrub: .ruleAndDot, sticky: true, claimsDrag: true)
 }
 
 struct SeriesChrome {
@@ -172,8 +177,9 @@ struct SeriesChrome {
     var scrub: ScrubStyle = .ruleDotAndTooltip
     var sticky = false
     var showExtremes = false
+    var claimsDrag = false
 
-    init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, autoBucket: Bool = false, minBarWidth: Double = 6, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, profile: TimeSeriesProfile = .terminal, scrub: ScrubStyle = .ruleDotAndTooltip, sticky: Bool = false, showExtremes: Bool = false) {
+    init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, autoBucket: Bool = false, minBarWidth: Double = 6, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, profile: TimeSeriesProfile = .terminal, scrub: ScrubStyle = .ruleDotAndTooltip, sticky: Bool = false, showExtremes: Bool = false, claimsDrag: Bool = false) {
         self.zoom = zoom
         self.pan = pan
         self.magnet = magnet
@@ -190,10 +196,11 @@ struct SeriesChrome {
         self.scrub = scrub
         self.sticky = sticky
         self.showExtremes = showExtremes
+        self.claimsDrag = claimsDrag
     }
 
     init(_ chrome: ChartChrome) {
-        self.init(zoom: chrome.zoom, pan: chrome.pan, magnet: chrome.magnet, flash: chrome.flash, followLive: chrome.followLive, rangeSelect: chrome.rangeSelect, doubleTapReset: chrome.doubleTapReset, liveButton: chrome.liveButton, axes: chrome.axes, tooltip: chrome.tooltip, profile: chrome.magnet ? .terminal : .editorial, scrub: chrome.scrub, sticky: chrome.sticky, showExtremes: chrome.showExtremes)
+        self.init(zoom: chrome.zoom, pan: chrome.pan, magnet: chrome.magnet, flash: chrome.flash, followLive: chrome.followLive, rangeSelect: chrome.rangeSelect, doubleTapReset: chrome.doubleTapReset, liveButton: chrome.liveButton, axes: chrome.axes, tooltip: chrome.tooltip, profile: chrome.magnet ? .terminal : .editorial, scrub: chrome.scrub, sticky: chrome.sticky, showExtremes: chrome.showExtremes, claimsDrag: chrome.claimsDrag)
     }
 }
 
@@ -342,7 +349,7 @@ struct SeriesPlot: View {
     @ViewBuilder private func pointerLayer<V: View>(_ view: V, plot: CGRect, prepared: Prepared, range: LogicalRange) -> some View {
         let panGesture = drag(plot: plot, prepared: prepared, range: range)
         let scrub = scrubGesture(plot: plot, prepared: prepared, range: range)
-        let dragging = SeriesDrag(pan: chrome.pan, scrubs: chrome.scrub != .none && !chrome.pan, drag: panGesture, scrub: scrub)
+        let dragging = SeriesDrag(pan: chrome.pan, scrubs: chrome.scrub != .none && !chrome.pan, claimsDrag: chrome.claimsDrag, drag: panGesture, scrub: scrub)
         if chrome.doubleTapReset {
             view
                 .onTapGesture(count: 2) {
@@ -821,10 +828,7 @@ struct SeriesPlot: View {
     }
 
     private func indexAt(_ x: CGFloat, plot: CGRect, range: LogicalRange, count: Int) -> Int {
-        guard count > 0 else { return 0 }
-        let span = range.span == 0 ? 1 : range.span
-        let raw = range.from + Double((x - plot.minX) / plot.width) * span
-        return min(max(Int(raw.rounded()), 0), count - 1)
+        scrubBarIndex(atX: Double(x), plotMinX: Double(plot.minX), plotWidth: Double(plot.width), range: range, count: count)
     }
 
     private func hits(_ prepared: Prepared, index: Int) -> [(String, Double)] {
@@ -849,22 +853,14 @@ struct SeriesPlot: View {
     }
 
     private func scrubGesture(plot: CGRect, prepared: Prepared, range: LogicalRange) -> some Gesture {
-        let press = LongPressGesture(minimumDuration: 0.2)
-            .sequenced(before: DragGesture(minimumDistance: 0))
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
-                guard case let .second(true, drag?) = value else { return }
-                publishSelection(indexAt(drag.location.x, plot: plot, range: logical ?? range, count: prepared.times.count), prepared: prepared, range: logical ?? range)
+                publishSelection(indexAt(value.location.x, plot: plot, range: logical ?? range, count: prepared.times.count), prepared: prepared, range: logical ?? range)
             }
-            .onEnded { _ in
+            .onEnded { value in
+                publishSelection(indexAt(value.location.x, plot: plot, range: logical ?? range, count: prepared.times.count), prepared: prepared, range: logical ?? range)
                 if !chrome.sticky { clearSelection() }
             }
-        let horizontal = DragGesture(minimumDistance: 12).onChanged { value in
-            guard abs(value.translation.width) > abs(value.translation.height) * 1.2 else { return }
-            publishSelection(indexAt(value.location.x, plot: plot, range: logical ?? range, count: prepared.times.count), prepared: prepared, range: logical ?? range)
-        }.onEnded { _ in
-            if !chrome.sticky { clearSelection() }
-        }
-        return press.simultaneously(with: horizontal)
     }
 
     private func zoomGesture(plot: CGRect, range: LogicalRange) -> some Gesture {
@@ -1137,12 +1133,15 @@ private struct TooltipWidthKey: PreferenceKey {
 private struct SeriesDrag<Pan: Gesture, Scrub: Gesture>: ViewModifier {
     var pan: Bool
     var scrubs: Bool
+    var claimsDrag: Bool
     var drag: Pan
     var scrub: Scrub
 
     @ViewBuilder func body(content: Content) -> some View {
         if pan {
             content.gesture(drag)
+        } else if scrubs && claimsDrag {
+            content.highPriorityGesture(scrub)
         } else if scrubs {
             content.simultaneousGesture(scrub)
         } else {

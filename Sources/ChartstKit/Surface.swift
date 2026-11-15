@@ -278,6 +278,13 @@ public func logicalIndex(atX x: Double, plotMinX: Double, plotWidth: Double, ran
     return range.from + ((x - plotMinX) / width) * span
 }
 
+/// The bar under a finger. The result stays inside the series.
+public func scrubBarIndex(atX x: Double, plotMinX: Double, plotWidth: Double, range: LogicalRange, count: Int) -> Int {
+    guard count > 0 else { return 0 }
+    let raw = logicalIndex(atX: x, plotMinX: plotMinX, plotWidth: plotWidth, range: range)
+    return min(max(Int(raw.rounded()), 0), count - 1)
+}
+
 public func presetLogicalRange(times: [Int], preset: RangePreset) -> LogicalRange? {
     guard let first = times.first, let last = times.last else { return nil }
     guard let window = presetRange(first: first, last: last, preset: preset) else { return nil }

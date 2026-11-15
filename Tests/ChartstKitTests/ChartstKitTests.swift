@@ -358,6 +358,16 @@ final class ChartstKitTests: XCTestCase {
         XCTAssertNil(chartMotion(reduceMotion: true))
         XCTAssertEqual(ChartChrome.embedded.scrub, .ruleAndDot)
         XCTAssertFalse(ChartChrome.embedded.pan)
+        XCTAssertFalse(ChartChrome.embedded.claimsDrag)
+        XCTAssertEqual(ChartChrome.inspect.scrub, .ruleAndDot)
+        XCTAssertTrue(ChartChrome.inspect.claimsDrag)
+        XCTAssertTrue(ChartChrome.inspect.sticky)
+        XCTAssertFalse(ChartChrome.inspect.pan)
+        XCTAssertFalse(ChartChrome.inspect.zoom)
+        let scrubWindow = LogicalRange(from: -0.5, to: 9.5)
+        XCTAssertEqual(scrubBarIndex(atX: 0, plotMinX: 0, plotWidth: 100, range: scrubWindow, count: 10), 0)
+        XCTAssertEqual(scrubBarIndex(atX: 100, plotMinX: 0, plotWidth: 100, range: scrubWindow, count: 10), 9)
+        XCTAssertEqual(scrubBarIndex(atX: 50, plotMinX: 0, plotWidth: 100, range: scrubWindow, count: 10), 5)
     }
 
     private var utc: Calendar {
