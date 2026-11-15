@@ -295,11 +295,13 @@ func pinchZoomDelta(magnification: Double) -> Double? {
     return -log(magnification) / zoomSpeed
 }
 
-/// Bars whose bodies overlap the logical window. Indices are positions in the sorted time axis.
+/// Bars whose bodies overlap the logical window. A body is the half-bar on each side of its index.
+/// A window that starts and ends on those edges, such as 9.5...40.5, keeps bars 10...40.
 func visibleBarSpan(count: Int, range: LogicalRange) -> ClosedRange<Int>? {
     guard count > 0, range.from.isFinite, range.to.isFinite, range.to >= range.from else { return nil }
-    let start = max(0, Int((range.from - halfBar).rounded(.up)))
-    let end = min(count - 1, Int((range.to + halfBar).rounded(.down)))
+    // Index i overlaps when i > from - halfBar and i < to + halfBar. A touch at the edge does not.
+    let start = max(0, Int((range.from - halfBar).rounded(.down)) + 1)
+    let end = min(count - 1, Int((range.to + halfBar).rounded(.up)) - 1)
     guard start <= end else { return nil }
     return start...end
 }

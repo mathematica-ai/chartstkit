@@ -921,11 +921,10 @@ struct SeriesPlot: View {
     }
 
     private func stats(_ prepared: Prepared, range: LogicalRange) -> VisibleStats? {
-        guard let rows = prepared.series.first?.rows, !prepared.times.isEmpty else { return nil }
-        let start = min(max(Int(ceil(range.from)), 0), prepared.times.count - 1)
-        let end = min(max(Int(floor(range.to)), 0), prepared.times.count - 1)
-        let from = prepared.times[min(start, end)]
-        let to = prepared.times[max(start, end)]
+        guard let rows = prepared.series.first?.rows,
+              let span = visibleBarSpan(count: prepared.times.count, range: range) else { return nil }
+        let from = prepared.times[span.lowerBound]
+        let to = prepared.times[span.upperBound]
         let window = rows.filter { $0.time >= from && $0.time <= to }
         guard !window.isEmpty else { return nil }
         return visibleStats(window, from: 0, to: Double(window.count - 1))

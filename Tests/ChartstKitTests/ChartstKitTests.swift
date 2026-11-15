@@ -232,6 +232,8 @@ final class ChartstKitTests: XCTestCase {
         XCTAssertEqual(pricePlotFraction(value: 10, lower: 10, upper: 1000, logScale: false), 1, accuracy: 0.0001)
         XCTAssertEqual(visibleBarSpan(count: 10, range: LogicalRange(from: -0.5, to: 9.5)), 0...9)
         XCTAssertEqual(visibleBarSpan(count: 10, range: LogicalRange(from: 2.2, to: 5.2)), 2...5)
+        XCTAssertEqual(visibleBarSpan(count: 50, range: LogicalRange(from: 9.5, to: 40.5)), 10...40)
+        XCTAssertEqual(visibleBarSpan(count: 10, range: LogicalRange(from: 4.5, to: 5.5)), 5...5)
         XCTAssertNil(visibleBarSpan(count: 0, range: wide))
         let pad = CategoryPad(top: 16, right: 12, bottom: 28, left: 36)
         XCTAssertEqual(categoryIndex(x: 40, y: 40, width: 640, height: 320, pad: pad, count: 2, orientation: .vertical), 0)
