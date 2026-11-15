@@ -11,10 +11,10 @@ Maintained by [Mathematica](mailto:info@mathematica.ai).
 Add the package in Xcode, or in `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/mathematica-ai/chartstkit.git", branch: "main")
+.package(url: "https://github.com/mathematica-ai/chartstkit.git", from: "0.1.0")
 ```
 
-The library links as `ChartstKit` and needs iOS 17 or macOS 14.
+The library links as `ChartstKit` and needs iOS 17 or macOS 14. Release `0.1.0` is commit `828ff86`.
 
 In an XcodeGen project:
 
@@ -22,14 +22,14 @@ In an XcodeGen project:
 packages:
   ChartstKit:
     url: https://github.com/mathematica-ai/chartstkit.git
-    branch: main
+    from: 0.1.0
 targets:
   App:
     dependencies:
       - package: ChartstKit
 ```
 
-Pass `chrome: .embedded` when the screen already has its own range control and readout. Embedded chrome draws the series, a vertical rule, and a dot on the active value. It does not pan, zoom, or draw axes. Bind `selection` when the host wants the scrubbed values. Resolve the host palette to `rgba(...)` strings and put them on a `ChartTheme`. ChartstKit does not read system colours itself. `.terminal` is the default and keeps pan, pinch, axes, and the tooltip.
+Pass `chrome: .embedded` when the screen already has its own range control and readout. On `0.1.0`, embedded chrome draws the series only. It does not pan, zoom, draw axes, or draw a scrub rule. This branch, after that tag, draws a vertical rule and a dot on the active value. Bind `selection` when the host wants the scrubbed values. Resolve the host palette to `rgba(...)` strings and put them on a `ChartTheme`. ChartstKit does not read system colours itself. `.terminal` is the default and keeps pan, pinch, axes, and the tooltip.
 
 ```swift
 import ChartstKit
