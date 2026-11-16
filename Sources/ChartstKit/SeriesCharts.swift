@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 public enum PriceScale: String, Sendable { case left, right }
 public enum LineVariant: String, Sendable { case line, area, baseline }
@@ -136,8 +139,10 @@ public struct ChartChrome: Equatable, Sendable {
     public var showExtremes: Bool
     /// A drag on the plot reads a bar and does not scroll the page.
     public var claimsDrag: Bool
+    /// How a finger starts reading a value.
+    public var activation: ScrubActivation
 
-    public init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, scrub: ScrubStyle = .ruleDotAndTooltip, sticky: Bool = false, showExtremes: Bool = false, claimsDrag: Bool = false) {
+    public init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, scrub: ScrubStyle = .ruleDotAndTooltip, sticky: Bool = false, showExtremes: Bool = false, claimsDrag: Bool = false, activation: ScrubActivation = .touch) {
         self.zoom = zoom
         self.pan = pan
         self.magnet = magnet
@@ -152,12 +157,16 @@ public struct ChartChrome: Equatable, Sendable {
         self.sticky = sticky
         self.showExtremes = showExtremes
         self.claimsDrag = claimsDrag
+        self.activation = activation
     }
 
     public static let terminal = ChartChrome()
     public static let embedded = ChartChrome(zoom: false, pan: false, magnet: false, flash: false, followLive: false, rangeSelect: false, doubleTapReset: false, liveButton: false, axes: false, tooltip: false, scrub: .ruleAndDot)
     /// A finger on the line reads that close. The rule stays. The page does not scroll.
     public static let inspect = ChartChrome(zoom: false, pan: false, magnet: false, flash: false, followLive: false, rangeSelect: false, doubleTapReset: false, liveButton: false, axes: false, tooltip: false, scrub: .ruleAndDot, sticky: true, claimsDrag: true)
+    /// Press and hold to read a value. A callout over the line gives the value and the date, and it follows the finger.
+    /// Lifting the finger clears it. A drag that starts without the hold scrolls the page.
+    public static let press = ChartChrome(zoom: false, pan: false, magnet: false, flash: false, followLive: false, rangeSelect: false, doubleTapReset: false, liveButton: false, axes: false, tooltip: false, scrub: .ruleAndDot, sticky: false, claimsDrag: false, activation: .press)
 }
 
 struct SeriesChrome {
@@ -178,8 +187,9 @@ struct SeriesChrome {
     var sticky = false
     var showExtremes = false
     var claimsDrag = false
+    var activation: ScrubActivation = .touch
 
-    init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, autoBucket: Bool = false, minBarWidth: Double = 6, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, profile: TimeSeriesProfile = .terminal, scrub: ScrubStyle = .ruleDotAndTooltip, sticky: Bool = false, showExtremes: Bool = false, claimsDrag: Bool = false) {
+    init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, autoBucket: Bool = false, minBarWidth: Double = 6, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, profile: TimeSeriesProfile = .terminal, scrub: ScrubStyle = .ruleDotAndTooltip, sticky: Bool = false, showExtremes: Bool = false, claimsDrag: Bool = false, activation: ScrubActivation = .touch) {
         self.zoom = zoom
         self.pan = pan
         self.magnet = magnet
@@ -197,10 +207,11 @@ struct SeriesChrome {
         self.sticky = sticky
         self.showExtremes = showExtremes
         self.claimsDrag = claimsDrag
+        self.activation = activation
     }
 
     init(_ chrome: ChartChrome) {
-        self.init(zoom: chrome.zoom, pan: chrome.pan, magnet: chrome.magnet, flash: chrome.flash, followLive: chrome.followLive, rangeSelect: chrome.rangeSelect, doubleTapReset: chrome.doubleTapReset, liveButton: chrome.liveButton, axes: chrome.axes, tooltip: chrome.tooltip, profile: chrome.magnet ? .terminal : .editorial, scrub: chrome.scrub, sticky: chrome.sticky, showExtremes: chrome.showExtremes, claimsDrag: chrome.claimsDrag)
+        self.init(zoom: chrome.zoom, pan: chrome.pan, magnet: chrome.magnet, flash: chrome.flash, followLive: chrome.followLive, rangeSelect: chrome.rangeSelect, doubleTapReset: chrome.doubleTapReset, liveButton: chrome.liveButton, axes: chrome.axes, tooltip: chrome.tooltip, profile: chrome.magnet ? .terminal : .editorial, scrub: chrome.scrub, sticky: chrome.sticky, showExtremes: chrome.showExtremes, claimsDrag: chrome.claimsDrag, activation: chrome.activation)
     }
 }
 
@@ -245,6 +256,8 @@ struct SeriesPlot: View {
     @State private var pinchStart: LogicalRange?
     @State private var plotWidth: CGFloat = 0
     @State private var tooltipWidth: CGFloat = 0
+    @State private var calloutSize: CGSize = .zero
+    @State private var pressing = false
     @State private var accessSamples: [ChartSeriesSample] = []
     @State private var accessSummary: String = ""
     @FocusState private var focused: Bool
@@ -266,10 +279,12 @@ struct SeriesPlot: View {
                 let canvas = Canvas { context, _ in
                     drawPlot(context, size: size, plot: plot, prepared: prepared, range: range, state: resolved)
                 }
-                .simultaneousGesture(zoomGesture(plot: plot, range: range))
-                .simultaneousGesture(selectGesture(plot: plot, prepared: prepared))
+                // A gesture the chrome turns off is not attached, so it cannot hold a drag the page needs to scroll.
+                .modifier(OptionalGesture(enabled: chrome.zoom, gesture: zoomGesture(plot: plot, range: range)))
+                .modifier(OptionalGesture(enabled: chrome.rangeSelect, gesture: selectGesture(plot: plot, prepared: prepared)))
                 pointerLayer(canvas, plot: plot, prepared: prepared, range: range)
                 .overlay(alignment: .topLeading) { tooltip(prepared, plot: plot, range: range) }
+                .overlay(alignment: .topLeading) { pressCallout(prepared, plot: plot, range: range, viewHeight: size.height) }
                 .overlay(alignment: .bottomLeading) { stateLabel(presentation) }
                 .overlay(alignment: .bottomTrailing) { liveButton(prepared) }
                 .onAppear { plotWidth = geo.size.width }
@@ -350,7 +365,13 @@ struct SeriesPlot: View {
         let panGesture = drag(plot: plot, prepared: prepared, range: range)
         let scrub = scrubGesture(plot: plot, prepared: prepared, range: range)
         let dragging = SeriesDrag(pan: chrome.pan, scrubs: chrome.scrub != .none && !chrome.pan, claimsDrag: chrome.claimsDrag, drag: panGesture, scrub: scrub)
-        if chrome.doubleTapReset {
+        if chrome.activation == .press {
+            // A hold starts the reading. Until then the page keeps the drag, so it still scrolls.
+            PressLayer(content: view, legacy: pressGesture(plot: plot, prepared: prepared, range: range)) { point in
+                pressMoved(point, plot: plot, prepared: prepared, range: range)
+            }
+            .sensoryFeedback(.impact(weight: .light), trigger: pressing) { _, now in now }
+        } else if chrome.doubleTapReset {
             view
                 .onTapGesture(count: 2) {
                     withAnimation(chartMotion(reduceMotion: reduceMotion)) {
@@ -863,6 +884,30 @@ struct SeriesPlot: View {
             }
     }
 
+    /// A held finger at `point`, or nil when it lifts.
+    private func pressMoved(_ point: CGPoint?, plot: CGRect, prepared: Prepared, range: LogicalRange) {
+        guard let point else {
+            pressing = false
+            crosshair = nil
+            selection?.wrappedValue = nil
+            return
+        }
+        if !pressing { pressing = true }
+        publishSelection(indexAt(point.x, plot: plot, range: logical ?? range, count: prepared.times.count), prepared: prepared, range: logical ?? range)
+    }
+
+    private func pressGesture(plot: CGRect, prepared: Prepared, range: LogicalRange) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.25, maximumDistance: 12)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
+            .onChanged { value in
+                guard case let .second(true, drag) = value else { return }
+                if !pressing { pressing = true }
+                guard let drag else { return }
+                publishSelection(indexAt(drag.location.x, plot: plot, range: logical ?? range, count: prepared.times.count), prepared: prepared, range: logical ?? range)
+            }
+            .onEnded { _ in pressMoved(nil, plot: plot, prepared: prepared, range: range) }
+    }
+
     private func zoomGesture(plot: CGRect, range: LogicalRange) -> some Gesture {
         MagnifyGesture().onChanged { value in
             guard chrome.zoom else { return }
@@ -986,6 +1031,27 @@ struct SeriesPlot: View {
             })
             .offset(x: clampedTooltipOrigin(anchor: anchor, width: tooltipWidth, plotMin: plot.minX, plotMax: plot.maxX), y: 8)
             .onPreferenceChange(TooltipWidthKey.self) { tooltipWidth = $0 }
+        }
+    }
+
+    /// The value under a held finger, in a box over the line. It never takes a touch.
+    @ViewBuilder private func pressCallout(_ prepared: Prepared, plot: CGRect, range: LogicalRange, viewHeight: CGFloat) -> some View {
+        if chrome.activation == .press, let crosshair, let time = prepared.times[safe: crosshair],
+           let item = prepared.series.first, let row = item.rows.first(where: { $0.time == time }) {
+            let x = xPos(Double(crosshair), plot: plot, range: range)
+            let y = yPos(row.close, domain: domain(item.scale, prepared, range), plot: plot)
+            PressCallout(value: valueText(item.id, row.close), time: timeText(time), theme: theme)
+                .fixedSize()
+                .background(GeometryReader { proxy in
+                    Color.clear.preference(key: CalloutSizeKey.self, value: proxy.size)
+                })
+                .onPreferenceChange(CalloutSizeKey.self) { calloutSize = $0 }
+                .offset(
+                    x: min(max(x - calloutSize.width / 2, plot.minX), max(plot.minX, plot.maxX - calloutSize.width)),
+                    y: pressCalloutY(anchorY: y, height: calloutSize.height, viewHeight: viewHeight)
+                )
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
     }
 
@@ -1125,6 +1191,35 @@ struct SeriesPlot: View {
     }
 }
 
+private struct CalloutSizeKey: PreferenceKey {
+    static var defaultValue: CGSize = .zero
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
+}
+
+/// The value is the line people read. The date sits under it, quieter.
+private struct PressCallout: View {
+    var value: String
+    var time: String
+    var theme: ChartTheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value)
+                .font(.system(size: theme.value.size ?? 15, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(chartColor(theme.callout.text, fallback: chartColor(theme.palette.text)))
+            Text(time)
+                .font(.system(size: theme.axis.size ?? 12))
+                .foregroundStyle(chartColor(theme.callout.secondaryText, fallback: chartColor(theme.palette.text).opacity(0.7)))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(chartColor(theme.callout.background, fallback: chartColor(theme.palette.background)), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(chartColor(theme.callout.border, fallback: chartColor(theme.palette.grid)), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+    }
+}
+
 private struct TooltipWidthKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
@@ -1150,6 +1245,65 @@ private struct SeriesDrag<Pan: Gesture, Scrub: Gesture>: ViewModifier {
     }
 }
 
+/// Press-and-hold reading. On iOS 18 and later it is the system long-press recogniser, which gives the drag back
+/// to a scroll view when the finger moves before the hold. Earlier systems use the SwiftUI gesture.
+private struct PressLayer<Content: View, Legacy: Gesture>: View {
+    var content: Content
+    var legacy: Legacy
+    var moved: (CGPoint?) -> Void
+
+    var body: some View {
+        #if canImport(UIKit) && !os(watchOS)
+        if #available(iOS 18.0, tvOS 18.0, visionOS 2.0, *) {
+            content.gesture(PressRecognizer(moved: moved))
+        } else {
+            content.simultaneousGesture(legacy)
+        }
+        #else
+        content.simultaneousGesture(legacy)
+        #endif
+    }
+}
+
+#if canImport(UIKit) && !os(watchOS)
+@available(iOS 18.0, tvOS 18.0, visionOS 2.0, *)
+private struct PressRecognizer: UIGestureRecognizerRepresentable {
+    var moved: (CGPoint?) -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let recognizer = UILongPressGestureRecognizer()
+        recognizer.minimumPressDuration = 0.25
+        recognizer.allowableMovement = 12
+        recognizer.cancelsTouchesInView = false
+        return recognizer
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        switch recognizer.state {
+        case .began, .changed:
+            moved(context.converter.localLocation)
+        case .ended, .cancelled, .failed:
+            moved(nil)
+        default:
+            break
+        }
+    }
+}
+#endif
+
+private struct OptionalGesture<G: Gesture>: ViewModifier {
+    var enabled: Bool
+    var gesture: G
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled {
+            content.simultaneousGesture(gesture)
+        } else {
+            content
+        }
+    }
+}
+
 private struct SeriesZoomAccess: ViewModifier {
     var enabled: Bool
     var action: (AccessibilityZoomGestureAction) -> Void
@@ -1161,6 +1315,14 @@ private struct SeriesZoomAccess: ViewModifier {
             content
         }
     }
+}
+
+func hostValue(_ format: ((Double) -> String)?) -> ((String, Double) -> String)? {
+    format.map { format in { _, value in format(value) } }
+}
+
+func hostTime(_ format: ((Date) -> String)?) -> ((Int) -> String)? {
+    format.map { format in { unix in format(Date(timeIntervalSince1970: TimeInterval(unix))) } }
 }
 
 struct Prepared {
@@ -1180,6 +1342,10 @@ extension Array {
 
 public struct LineChart: View {
     public var data: [LinePoint]
+    /// How a value reads in the callout and to VoiceOver. Nil uses plain numbers.
+    public var formatValue: ((Double) -> String)?
+    /// How a date reads in the callout and to VoiceOver.
+    public var formatTime: ((Date) -> String)?
     public var variant: LineVariant
     public var bands: [BandItem]
     public var bandStyles: [String: BandStyleInput]
@@ -1202,8 +1368,10 @@ public struct LineChart: View {
 
     @Environment(\.chartTheme) private var environmentTheme
 
-    public init(data: [LinePoint], variant: LineVariant = .line, bands: [BandItem] = [], bandStyles: [String: BandStyleInput] = [:], overlays: [[LinePoint]] = [], range: RangePreset? = nil, anchor: ChartTime? = nil, logScale: Bool = false, height: CGFloat = 340, ariaLabel: String = "Line chart", theme: ChartTheme? = nil, baseValue: Double = 0, markers: [TimeSeriesMarker] = [], chrome: ChartChrome = .terminal, onPointClick: ((Int, [(String, Double)]) -> Void)? = nil, onRangeSelect: ((VisibleStats) -> Void)? = nil, onReset: (() -> Void)? = nil, onVisibleStats: ((VisibleStats?) -> Void)? = nil, selection: Binding<ChartSelection?>? = nil, state: ChartState = .ready) {
+    public init(data: [LinePoint], variant: LineVariant = .line, bands: [BandItem] = [], bandStyles: [String: BandStyleInput] = [:], overlays: [[LinePoint]] = [], range: RangePreset? = nil, anchor: ChartTime? = nil, logScale: Bool = false, height: CGFloat = 340, ariaLabel: String = "Line chart", theme: ChartTheme? = nil, baseValue: Double = 0, markers: [TimeSeriesMarker] = [], chrome: ChartChrome = .terminal, onPointClick: ((Int, [(String, Double)]) -> Void)? = nil, onRangeSelect: ((VisibleStats) -> Void)? = nil, onReset: (() -> Void)? = nil, onVisibleStats: ((VisibleStats?) -> Void)? = nil, selection: Binding<ChartSelection?>? = nil, state: ChartState = .ready, formatValue: ((Double) -> String)? = nil, formatTime: ((Date) -> String)? = nil) {
         self.data = data
+        self.formatValue = formatValue
+        self.formatTime = formatTime
         self.variant = variant
         self.bands = bands
         self.bandStyles = bandStyles
@@ -1227,7 +1395,7 @@ public struct LineChart: View {
 
     public var body: some View {
         let theme = themeOverride ?? environmentTheme
-        SeriesPlot(series: lineSeries(theme), bands: bands, bandStyles: bandStyles, ribbons: [], guides: [], ranges: [], markers: markers, chrome: SeriesChrome(chrome), logScale: logScale, preset: preset, anchor: anchor, histogramMode: .plain, threshold: nil, coloring: .direction, height: height, ariaLabel: ariaLabel, categories: nil, timeVisible: false, theme: theme, formatTime: nil, formatValue: nil, onPointClick: onPointClick, onRangeSelect: onRangeSelect, onReset: onReset, onVisibleStats: onVisibleStats, selection: selection, chartState: state)
+        SeriesPlot(series: lineSeries(theme), bands: bands, bandStyles: bandStyles, ribbons: [], guides: [], ranges: [], markers: markers, chrome: SeriesChrome(chrome), logScale: logScale, preset: preset, anchor: anchor, histogramMode: .plain, threshold: nil, coloring: .direction, height: height, ariaLabel: ariaLabel, categories: nil, timeVisible: false, theme: theme, formatTime: hostTime(formatTime), formatValue: hostValue(formatValue), onPointClick: onPointClick, onRangeSelect: onRangeSelect, onReset: onReset, onVisibleStats: onVisibleStats, selection: selection, chartState: state)
     }
 
     private func lineSeries(_ theme: ChartTheme) -> [DrawnSeries] {
@@ -1339,6 +1507,8 @@ public struct HistogramChart: View {
 
 public struct CandlestickChart: View {
     public var data: [OHLC]
+    public var formatValue: ((Double) -> String)?
+    public var formatTime: ((Date) -> String)?
     public var coloring: CandlestickColoring
     public var bands: [BandItem]
     public var preset: RangePreset?
@@ -1354,8 +1524,10 @@ public struct CandlestickChart: View {
     public var state: ChartState
     @Environment(\.chartTheme) private var environmentTheme
 
-    public init(data: [OHLC], coloring: CandlestickColoring = .direction, bands: [BandItem] = [], range: RangePreset? = nil, height: CGFloat = 340, ariaLabel: String = "Candlestick chart", theme: ChartTheme? = nil, chrome: ChartChrome = .terminal, onPointClick: ((Int, [(String, Double)]) -> Void)? = nil, onRangeSelect: ((VisibleStats) -> Void)? = nil, onReset: (() -> Void)? = nil, onVisibleStats: ((VisibleStats?) -> Void)? = nil, selection: Binding<ChartSelection?>? = nil, state: ChartState = .ready) {
+    public init(data: [OHLC], coloring: CandlestickColoring = .direction, bands: [BandItem] = [], range: RangePreset? = nil, height: CGFloat = 340, ariaLabel: String = "Candlestick chart", theme: ChartTheme? = nil, chrome: ChartChrome = .terminal, onPointClick: ((Int, [(String, Double)]) -> Void)? = nil, onRangeSelect: ((VisibleStats) -> Void)? = nil, onReset: (() -> Void)? = nil, onVisibleStats: ((VisibleStats?) -> Void)? = nil, selection: Binding<ChartSelection?>? = nil, state: ChartState = .ready, formatValue: ((Double) -> String)? = nil, formatTime: ((Date) -> String)? = nil) {
         self.data = data
+        self.formatValue = formatValue
+        self.formatTime = formatTime
         self.coloring = coloring
         self.bands = bands
         self.preset = range
@@ -1373,7 +1545,7 @@ public struct CandlestickChart: View {
 
     public var body: some View {
         let theme = themeOverride ?? environmentTheme
-        SeriesPlot(series: [candleSeries(theme)], bands: bands, bandStyles: [:], ribbons: [], guides: [], ranges: [], markers: [], chrome: SeriesChrome(chrome), logScale: false, preset: preset, anchor: nil, histogramMode: .plain, threshold: nil, coloring: coloring, height: height, ariaLabel: ariaLabel, categories: nil, timeVisible: false, theme: theme, formatTime: nil, formatValue: nil, onPointClick: onPointClick, onRangeSelect: onRangeSelect, onReset: onReset, onVisibleStats: onVisibleStats, selection: selection, chartState: state)
+        SeriesPlot(series: [candleSeries(theme)], bands: bands, bandStyles: [:], ribbons: [], guides: [], ranges: [], markers: [], chrome: SeriesChrome(chrome), logScale: false, preset: preset, anchor: nil, histogramMode: .plain, threshold: nil, coloring: coloring, height: height, ariaLabel: ariaLabel, categories: nil, timeVisible: false, theme: theme, formatTime: hostTime(formatTime), formatValue: hostValue(formatValue), onPointClick: onPointClick, onRangeSelect: onRangeSelect, onReset: onReset, onVisibleStats: onVisibleStats, selection: selection, chartState: state)
     }
 
     private func candleSeries(_ theme: ChartTheme) -> DrawnSeries {

@@ -31,6 +31,10 @@ targets:
 
 Pass `chrome: .embedded` when the screen already has its own range control and readout. On `0.1.0`, embedded chrome draws the series only. It does not pan, zoom, draw axes, or draw a scrub rule. This branch, after that tag, draws a vertical rule and a dot on the active value. `chrome: .inspect` is that same chart, and a drag reads the close under the finger. The rule stays. The page does not scroll while the finger is on the plot. Bind `selection` when the host wants the scrubbed values. Resolve the host palette to `rgba(...)` strings and put them on a `ChartTheme`. ChartstKit does not read system colours itself. `.terminal` is the default and keeps pan, pinch, axes, and the tooltip.
 
+`chrome: .press` reads a value on press and hold. After a quarter of a second a callout over the line shows the value and the date, and it follows the finger. Lifting the finger clears it. A swipe that starts on the chart before the hold still scrolls the page, because on iOS 18 and later the hold is the system long-press recogniser. Earlier systems fall back to a SwiftUI gesture. Pass `formatValue` and `formatTime` to `LineChart` or `CandlestickChart` to word the callout, and set `theme.callout` for its colours. Unset callout colours use the palette. Any chrome can opt in with `activation: .press`.
+
+From this release, a chart whose chrome turns zoom or range select off no longer attaches those gestures, so they cannot hold a drag the page needs.
+
 ```swift
 import ChartstKit
 

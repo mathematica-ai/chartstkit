@@ -1,6 +1,22 @@
 import Accessibility
 import SwiftUI
 
+/// How a finger starts reading a value. `.touch` reads on contact.
+/// `.press` waits for a short hold, so a drag that starts without the hold still scrolls the page.
+public enum ScrubActivation: String, Equatable, Sendable {
+    case touch
+    case press
+}
+
+/// Where the press callout sits: above the point, or below it when there is no room above.
+/// The result stays inside the view.
+func pressCalloutY(anchorY: CGFloat, height: CGFloat, viewHeight: CGFloat, gap: CGFloat = 12) -> CGFloat {
+    let above = anchorY - gap - height
+    if above >= 0 { return above }
+    let below = anchorY + gap
+    return min(below, max(0, viewHeight - height))
+}
+
 public enum ScrubStyle: String, Equatable, Sendable {
     case none
     case rule

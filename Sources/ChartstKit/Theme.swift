@@ -178,6 +178,21 @@ public struct ChartTheme: Equatable, Sendable {
     public var anchorColor: String?
     public var pie: Pie
     public var heatmap: Heatmap
+    public var callout: Callout
+
+    /// The box a press shows over the line. Unset colours fall back to the palette.
+    public struct Callout: Equatable, Sendable {
+        public var background: String?
+        public var text: String?
+        public var secondaryText: String?
+        public var border: String?
+        public init(background: String? = nil, text: String? = nil, secondaryText: String? = nil, border: String? = nil) {
+            self.background = background
+            self.text = text
+            self.secondaryText = secondaryText
+            self.border = border
+        }
+    }
 
     public struct BandTheme: Equatable, Sendable {
         public var opacity: Double
@@ -209,7 +224,8 @@ public struct ChartTheme: Equatable, Sendable {
         bands: BandTheme = BandTheme(),
         anchorColor: String? = nil,
         pie: Pie = Pie(),
-        heatmap: Heatmap = Heatmap()
+        heatmap: Heatmap = Heatmap(),
+        callout: Callout = Callout()
     ) {
         self.palette = palette
         self.axis = axis
@@ -233,6 +249,7 @@ public struct ChartTheme: Equatable, Sendable {
         self.anchorColor = anchorColor
         self.pie = pie
         self.heatmap = heatmap
+        self.callout = callout
     }
 
     public static let `default` = ChartTheme(

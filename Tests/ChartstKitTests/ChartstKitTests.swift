@@ -364,6 +364,13 @@ final class ChartstKitTests: XCTestCase {
         XCTAssertTrue(ChartChrome.inspect.sticky)
         XCTAssertFalse(ChartChrome.inspect.pan)
         XCTAssertFalse(ChartChrome.inspect.zoom)
+        XCTAssertEqual(ChartChrome.inspect.activation, .touch)
+        XCTAssertEqual(ChartChrome.terminal.activation, .touch)
+        XCTAssertEqual(ChartChrome.press.activation, .press)
+        XCTAssertFalse(ChartChrome.press.claimsDrag)
+        XCTAssertFalse(ChartChrome.press.sticky)
+        XCTAssertFalse(ChartChrome.press.pan)
+        XCTAssertEqual(ChartChrome.press.scrub, .ruleAndDot)
         let scrubWindow = LogicalRange(from: -0.5, to: 9.5)
         XCTAssertEqual(scrubBarIndex(atX: 0, plotMinX: 0, plotWidth: 100, range: scrubWindow, count: 10), 0)
         XCTAssertEqual(scrubBarIndex(atX: 100, plotMinX: 0, plotWidth: 100, range: scrubWindow, count: 10), 9)
@@ -374,5 +381,24 @@ final class ChartstKitTests: XCTestCase {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         return calendar
+    }
+
+    func testPressCalloutSitsAboveThePointAndFlipsBelowNearTheTop() {
+        XCTAssertEqual(pressCalloutY(anchorY: 120, height: 40, viewHeight: 200), 68)
+        XCTAssertEqual(pressCalloutY(anchorY: 30, height: 40, viewHeight: 200), 42)
+        XCTAssertEqual(pressCalloutY(anchorY: 30, height: 40, viewHeight: 60), 20)
+    }
+
+    func testHostFormattersReachThePlot() {
+        let value = hostValue { "$\(Int($0))" }
+        XCTAssertEqual(value?("series", 12), "$12")
+        let time = hostTime { _ in "day" }
+        XCTAssertEqual(time?(0), "day")
+        XCTAssertNil(hostValue(nil))
+    }
+
+    func testThemeCalloutDefaultsToThePalette() {
+        XCTAssertNil(ChartTheme.default.callout.background)
+        XCTAssertNil(ChartTheme.default.callout.text)
     }
 }
