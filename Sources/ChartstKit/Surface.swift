@@ -8,6 +8,13 @@ public enum ScrubActivation: String, Equatable, Sendable {
     case press
 }
 
+/// Whether a held finger's move from `previous` to `next` gets a selection tap: only onto another bar, only while held.
+/// Lifting the finger, or a live tick that clears the reading, never taps.
+func scrubHapticFires(previous: Int?, next: Int?, pressing: Bool, enabled: Bool) -> Bool {
+    guard enabled, pressing, let previous, let next else { return false }
+    return previous != next
+}
+
 /// Where the press callout sits: above the point, or below it when there is no room above.
 /// The result stays inside the view.
 func pressCalloutY(anchorY: CGFloat, height: CGFloat, viewHeight: CGFloat, gap: CGFloat = 12) -> CGFloat {

@@ -46,7 +46,7 @@ These four keep the terminal surface.
 | Crosshair | Follows a pan or a scrub. Arrow keys and the VoiceOver adjustable action move it when the chart is focused. A landmarks rotor jumps to the high, the low, the first bar, and the last bar |
 | Pinch | Zooms around the finger where the pinch starts. Spreading zooms in. The price scale refits to the bars in that window |
 | Pan | Drag with one finger, when pan is on |
-| Scrub | When pan is off and `scrub` is not `.none`. A sideways drag of at least 12 points, or a 0.2s long-press then a drag. `.rule` draws the rule, `.ruleAndDot` adds a dot, `.ruleDotAndTooltip` adds the tooltip. Embedded chrome uses `.ruleAndDot` |
+| Scrub | When pan is off and `scrub` is not `.none`. A sideways drag of at least 12 points, or a 0.2s long-press then a drag. `.rule` draws the rule, `.ruleAndDot` adds a dot, `.ruleDotAndTooltip` adds the tooltip. Embedded chrome uses `.ruleAndDot`, after a quarter-second hold (`activation: .press`), with a selection tap per bar and no callout |
 | Range select | Long-press, then drag, when range select is on. The chart zooms to the window and calls `onRangeSelect` |
 | Reset | Double-tap calls `onReset` and fits the data, when double-tap reset is on |
 | Range preset | `range: .oneDay`, `.oneWeek`, `.oneMonth`, `.threeMonths`, `.yearToDate`, `.oneYear`, `.threeYears`, `.fiveYears`, `.all`. The window stays put as new bars arrive. Follow-live slides it. A user pan is left alone. The slide itself is not animated |
@@ -133,4 +133,4 @@ These match the p1-charts helpers and are safe to call without a view:
 
 ## Limits
 
-This release does not include haptics, a range picker, a fullscreen chart, LTTB downsampling, Swift 6 mode, widgets, forecast series, string catalogues, or snapshot tests. `ChartPanes` gives each pane its own time scale, and `onSelect` reports the last time. `markExtreme` is accepted and not drawn. A font family name is stored on the theme; the drawn face is the system monospaced or default face. `iOS 18` scroll-phase tracking is not used.
+Haptics are limited to the press scrub: a light tap when the hold starts and a selection tap per bar (`haptics`). This release does not include a range picker, a fullscreen chart, LTTB downsampling, Swift 6 mode, widgets, forecast series, string catalogues, or snapshot tests. `ChartPanes` gives each pane its own time scale, and `onSelect` reports the last time. `markExtreme` is accepted and not drawn. A font family name is stored on the theme; the drawn face is the system monospaced or default face. `iOS 18` scroll-phase tracking is not used.

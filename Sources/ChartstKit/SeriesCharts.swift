@@ -122,7 +122,7 @@ struct DrawnRibbon {
 }
 
 /// What a host app leaves to the chart. `.terminal` is the trading surface.
-/// `.embedded` draws the series and a scrub rule, so the host keeps its own axes and readout.
+/// `.embedded` draws the series, and a held finger draws a rule and a dot, so the host keeps its own axes and readout.
 public struct ChartChrome: Equatable, Sendable {
     public var zoom: Bool
     public var pan: Bool
@@ -141,8 +141,12 @@ public struct ChartChrome: Equatable, Sendable {
     public var claimsDrag: Bool
     /// How a finger starts reading a value.
     public var activation: ScrubActivation
+    /// With `.press`, a box over the line gives the value and the date. Off, the host shows the reading itself.
+    public var callout: Bool
+    /// A selection tap each time a held finger moves onto another bar. Never on a live tick.
+    public var haptics: Bool
 
-    public init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, scrub: ScrubStyle = .ruleDotAndTooltip, sticky: Bool = false, showExtremes: Bool = false, claimsDrag: Bool = false, activation: ScrubActivation = .touch) {
+    public init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, scrub: ScrubStyle = .ruleDotAndTooltip, sticky: Bool = false, showExtremes: Bool = false, claimsDrag: Bool = false, activation: ScrubActivation = .touch, callout: Bool = false, haptics: Bool = true) {
         self.zoom = zoom
         self.pan = pan
         self.magnet = magnet
@@ -158,15 +162,19 @@ public struct ChartChrome: Equatable, Sendable {
         self.showExtremes = showExtremes
         self.claimsDrag = claimsDrag
         self.activation = activation
+        self.callout = callout
+        self.haptics = haptics
     }
 
     public static let terminal = ChartChrome()
-    public static let embedded = ChartChrome(zoom: false, pan: false, magnet: false, flash: false, followLive: false, rangeSelect: false, doubleTapReset: false, liveButton: false, axes: false, tooltip: false, scrub: .ruleAndDot)
+    /// Press and hold to read a value: a rule and a dot, reported through `selection`. A drag that starts without the hold
+    /// scrolls the page, and nothing reads on a plain touch.
+    public static let embedded = ChartChrome(zoom: false, pan: false, magnet: false, flash: false, followLive: false, rangeSelect: false, doubleTapReset: false, liveButton: false, axes: false, tooltip: false, scrub: .ruleAndDot, activation: .press)
     /// A finger on the line reads that close. The rule stays. The page does not scroll.
     public static let inspect = ChartChrome(zoom: false, pan: false, magnet: false, flash: false, followLive: false, rangeSelect: false, doubleTapReset: false, liveButton: false, axes: false, tooltip: false, scrub: .ruleAndDot, sticky: true, claimsDrag: true)
     /// Press and hold to read a value. A callout over the line gives the value and the date, and it follows the finger.
     /// Lifting the finger clears it. A drag that starts without the hold scrolls the page.
-    public static let press = ChartChrome(zoom: false, pan: false, magnet: false, flash: false, followLive: false, rangeSelect: false, doubleTapReset: false, liveButton: false, axes: false, tooltip: false, scrub: .ruleAndDot, sticky: false, claimsDrag: false, activation: .press)
+    public static let press = ChartChrome(zoom: false, pan: false, magnet: false, flash: false, followLive: false, rangeSelect: false, doubleTapReset: false, liveButton: false, axes: false, tooltip: false, scrub: .ruleAndDot, sticky: false, claimsDrag: false, activation: .press, callout: true)
 }
 
 struct SeriesChrome {
@@ -188,8 +196,10 @@ struct SeriesChrome {
     var showExtremes = false
     var claimsDrag = false
     var activation: ScrubActivation = .touch
+    var callout = false
+    var haptics = true
 
-    init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, autoBucket: Bool = false, minBarWidth: Double = 6, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, profile: TimeSeriesProfile = .terminal, scrub: ScrubStyle = .ruleDotAndTooltip, sticky: Bool = false, showExtremes: Bool = false, claimsDrag: Bool = false, activation: ScrubActivation = .touch) {
+    init(zoom: Bool = true, pan: Bool = true, magnet: Bool = true, flash: Bool = true, followLive: Bool = true, rangeSelect: Bool = true, doubleTapReset: Bool = true, autoBucket: Bool = false, minBarWidth: Double = 6, liveButton: Bool = true, axes: Bool = true, tooltip: Bool = true, profile: TimeSeriesProfile = .terminal, scrub: ScrubStyle = .ruleDotAndTooltip, sticky: Bool = false, showExtremes: Bool = false, claimsDrag: Bool = false, activation: ScrubActivation = .touch, callout: Bool = false, haptics: Bool = true) {
         self.zoom = zoom
         self.pan = pan
         self.magnet = magnet
@@ -208,10 +218,12 @@ struct SeriesChrome {
         self.showExtremes = showExtremes
         self.claimsDrag = claimsDrag
         self.activation = activation
+        self.callout = callout
+        self.haptics = haptics
     }
 
     init(_ chrome: ChartChrome) {
-        self.init(zoom: chrome.zoom, pan: chrome.pan, magnet: chrome.magnet, flash: chrome.flash, followLive: chrome.followLive, rangeSelect: chrome.rangeSelect, doubleTapReset: chrome.doubleTapReset, liveButton: chrome.liveButton, axes: chrome.axes, tooltip: chrome.tooltip, profile: chrome.magnet ? .terminal : .editorial, scrub: chrome.scrub, sticky: chrome.sticky, showExtremes: chrome.showExtremes, claimsDrag: chrome.claimsDrag, activation: chrome.activation)
+        self.init(zoom: chrome.zoom, pan: chrome.pan, magnet: chrome.magnet, flash: chrome.flash, followLive: chrome.followLive, rangeSelect: chrome.rangeSelect, doubleTapReset: chrome.doubleTapReset, liveButton: chrome.liveButton, axes: chrome.axes, tooltip: chrome.tooltip, profile: chrome.magnet ? .terminal : .editorial, scrub: chrome.scrub, sticky: chrome.sticky, showExtremes: chrome.showExtremes, claimsDrag: chrome.claimsDrag, activation: chrome.activation, callout: chrome.callout, haptics: chrome.haptics)
     }
 }
 
@@ -371,6 +383,9 @@ struct SeriesPlot: View {
                 pressMoved(point, plot: plot, prepared: prepared, range: range)
             }
             .sensoryFeedback(.impact(weight: .light), trigger: pressing) { _, now in now }
+            .sensoryFeedback(.selection, trigger: crosshair) { old, new in
+                scrubHapticFires(previous: old, next: new, pressing: pressing, enabled: chrome.haptics)
+            }
         } else if chrome.doubleTapReset {
             view
                 .onTapGesture(count: 2) {
@@ -1036,7 +1051,7 @@ struct SeriesPlot: View {
 
     /// The value under a held finger, in a box over the line. It never takes a touch.
     @ViewBuilder private func pressCallout(_ prepared: Prepared, plot: CGRect, range: LogicalRange, viewHeight: CGFloat) -> some View {
-        if chrome.activation == .press, let crosshair, let time = prepared.times[safe: crosshair],
+        if chrome.activation == .press, chrome.callout, let crosshair, let time = prepared.times[safe: crosshair],
            let item = prepared.series.first, let row = item.rows.first(where: { $0.time == time }) {
             let x = xPos(Double(crosshair), plot: plot, range: range)
             let y = yPos(row.close, domain: domain(item.scale, prepared, range), plot: plot)

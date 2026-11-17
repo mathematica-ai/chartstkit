@@ -397,6 +397,32 @@ final class ChartstKitTests: XCTestCase {
         XCTAssertNil(hostValue(nil))
     }
 
+    func testEmbeddedReadsOnAHoldWithARuleAndADotAndNoCallout() {
+        let embedded = SeriesChrome(ChartChrome.embedded)
+        XCTAssertEqual(embedded.activation, .press, "A plain touch must not read, so the page keeps the drag")
+        XCTAssertEqual(embedded.scrub, .ruleAndDot)
+        XCTAssertFalse(embedded.callout)
+        XCTAssertFalse(embedded.claimsDrag)
+        XCTAssertTrue(embedded.haptics)
+    }
+
+    func testPressKeepsItsCalloutAndAHostCanTurnItOff() {
+        XCTAssertTrue(SeriesChrome(ChartChrome.press).callout)
+        var quiet = ChartChrome.press
+        quiet.callout = false
+        XCTAssertFalse(SeriesChrome(quiet).callout)
+        XCTAssertFalse(SeriesChrome(ChartChrome.terminal).callout)
+    }
+
+    func testTheScrubTapsOnlyOnAnotherBarWhileHeld() {
+        XCTAssertTrue(scrubHapticFires(previous: 3, next: 4, pressing: true, enabled: true))
+        XCTAssertFalse(scrubHapticFires(previous: 4, next: 4, pressing: true, enabled: true), "same bar")
+        XCTAssertFalse(scrubHapticFires(previous: nil, next: 4, pressing: true, enabled: true), "the hold itself has its own tap")
+        XCTAssertFalse(scrubHapticFires(previous: 4, next: nil, pressing: true, enabled: true), "lifting")
+        XCTAssertFalse(scrubHapticFires(previous: 3, next: 4, pressing: false, enabled: true), "a live tick, no finger")
+        XCTAssertFalse(scrubHapticFires(previous: 3, next: 4, pressing: true, enabled: false))
+    }
+
     func testThemeCalloutDefaultsToThePalette() {
         XCTAssertNil(ChartTheme.default.callout.background)
         XCTAssertNil(ChartTheme.default.callout.text)

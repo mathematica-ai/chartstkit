@@ -29,9 +29,9 @@ targets:
       - package: ChartstKit
 ```
 
-Pass `chrome: .embedded` when the screen already has its own range control and readout. On `0.1.0`, embedded chrome draws the series only. It does not pan, zoom, draw axes, or draw a scrub rule. This branch, after that tag, draws a vertical rule and a dot on the active value. `chrome: .inspect` is that same chart, and a drag reads the close under the finger. The rule stays. The page does not scroll while the finger is on the plot. Bind `selection` when the host wants the scrubbed values. Resolve the host palette to `rgba(...)` strings and put them on a `ChartTheme`. ChartstKit does not read system colours itself. `.terminal` is the default and keeps pan, pinch, axes, and the tooltip.
+Pass `chrome: .embedded` when the screen already has its own range control and readout. It does not pan, zoom or draw axes. Press and hold, then drag: a vertical rule and a dot follow the finger, `selection` reports each bar, and a selection tap marks every new bar. A plain touch reads nothing, and a swipe that starts on the chart before the hold scrolls the page. Lifting the finger clears the reading unless `sticky` is on. There is no callout, so the host shows the reading. `chrome: .inspect` is that same chart, and a drag reads the close under the finger. The rule stays. The page does not scroll while the finger is on the plot. Bind `selection` when the host wants the scrubbed values. Resolve the host palette to `rgba(...)` strings and put them on a `ChartTheme`. ChartstKit does not read system colours itself. `.terminal` is the default and keeps pan, pinch, axes, and the tooltip.
 
-`chrome: .press` reads a value on press and hold. After a quarter of a second a callout over the line shows the value and the date, and it follows the finger. Lifting the finger clears it. A swipe that starts on the chart before the hold still scrolls the page, because on iOS 18 and later the hold is the system long-press recogniser. Earlier systems fall back to a SwiftUI gesture. Pass `formatValue` and `formatTime` to `LineChart` or `CandlestickChart` to word the callout, and set `theme.callout` for its colours. Unset callout colours use the palette. Any chrome can opt in with `activation: .press`.
+`chrome: .press` reads a value on press and hold. After a quarter of a second a callout over the line shows the value and the date, and it follows the finger. Lifting the finger clears it. A swipe that starts on the chart before the hold still scrolls the page, because on iOS 18 and later the hold is the system long-press recogniser. Earlier systems fall back to a SwiftUI gesture. Pass `formatValue` and `formatTime` to `LineChart` or `CandlestickChart` to word the callout, and set `theme.callout` for its colours. Unset callout colours use the palette. Any chrome can opt in with `activation: .press`; `callout: false` keeps the hold and drops the box, and `haptics: false` drops the taps.
 
 From this release, a chart whose chrome turns zoom or range select off no longer attaches those gestures, so they cannot hold a drag the page needs.
 
@@ -85,7 +85,7 @@ p1-charts uses a mouse. ChartstKit uses the same state machines with touch:
 | --- | --- |
 | Wheel and ctrl-wheel | Pinch, anchored where the gesture starts, when zoom is on |
 | Drag | Pan, and the crosshair follows, when pan is on |
-| Scrub inside a scroll view | Editorial time series and embedded chrome do not pan. A sideways drag, or a 0.2s long-press then a drag, moves the rule. Lifting clears the selection unless `sticky` is on |
+| Scrub inside a scroll view | Editorial time series do not pan; a sideways drag, or a 0.2s long-press then a drag, moves the rule. Embedded and press chrome read only after a quarter-second hold, so the page keeps every other drag. Lifting clears the selection unless `sticky` is on |
 | Shift-drag range select | Long-press, then drag, when range select is on. The chart zooms to that window |
 | Double-click reset | Double-tap, when double-tap reset is on |
 | Arrow keys, Enter, Space, Escape | Hardware keyboard, once the chart is focused. VoiceOver's adjustable action moves the same crosshair |
